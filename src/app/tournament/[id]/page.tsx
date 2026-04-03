@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useSession } from "next-auth/react"
 import { useParams } from "next/navigation"
+import { useAuth } from "../../providers"
 
 type Tournament = { id: string; name: string; code: string; organizerId: string }
 type Player = { id: string; name: string; xUsername: string }
@@ -13,7 +13,7 @@ type Recruitment = { id: string; setupId: string; creator: Player; template: str
 
 export default function TournamentPage() {
   const { id } = useParams<{ id: string }>()
-  const { data: session } = useSession()
+  const { user } = useAuth()
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [setups, setSetups] = useState<Setup[]>([])
   const [selectedSetup, setSelectedSetup] = useState<string | null>(null)
@@ -21,7 +21,7 @@ export default function TournamentPage() {
   const [error, setError] = useState("")
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const xId = (session?.user as { xId?: string })?.xId || ""
+  const xId = user?.id || ""
   const isOrganizer = tournament?.organizerId === xId
 
   // Fetch tournament

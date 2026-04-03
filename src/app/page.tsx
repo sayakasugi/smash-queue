@@ -1,17 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { signIn, useSession } from "next-auth/react"
+import { useAuth } from "./providers"
 
 export default function Home() {
-  const { data: session, status } = useSession()
+  const { user, loading, login, logout } = useAuth()
+  const [xUsername, setXUsername] = useState("")
   const [code, setCode] = useState("")
   const [name, setName] = useState("")
   const [mode, setMode] = useState<"join" | "create">("join")
   const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
-  if (status === "loading") {
+  if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="animate-pulse text-[var(--muted)]">読み込み中...</div>
@@ -19,7 +20,8 @@ export default function Home() {
     )
   }
 
-  if (!session) {
+  // Login screen
+  if (!user) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center space-y-8">
@@ -27,24 +29,47 @@ export default function Home() {
             <h1 className="text-3xl font-bold mb-2">⚡ SmashQueue</h1>
             <p className="text-[var(--muted)] text-sm">スマブラ大会フリー対戦管理</p>
           </div>
-          <button
-            onClick={() => signIn("twitter")}
-            className="w-full flex items-center justify-center gap-3 bg-[var(--card)] border border-[var(--card-border)] hover:border-[var(--accent)] text-white font-semibold py-4 px-6 rounded-xl transition-colors"
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              if (!xUsername.trim()) return
+              const ok = await login(xUsername.trim())
+              if (!ok) setError("エラーが発生しました")
+            }}
+            className="space-y-4"
           >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-            </svg>
-            X（Twitter）でログイン
-          </button>
+            <div>
+              <label className="block text-sm text-[var(--muted)] mb-2 text-left">X（Twitter）IDを入力</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]">@</span>
+                <input
+                  type="text"
+                  value={xUsername}
+                  onChange={(e) => setXUsername(e.target.value.replace(/^@/, ""))}
+                  placeholder="your_x_id"
+                  className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-4 pl-10 pr-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
+                />
+              </div>
+            </div>
+            {error && <p className="text-[var(--danger)] text-sm">{error}</p>}
+            <button
+              type="submit"
+              className="w-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold py-4 rounded-xl transition-colors"
+            >
+              はじめる
+            </button>
+          </form>
+          <p className="text-xs text-[var(--muted)]">※ 名前クリックで相手のXプロフィールを確認できます</p>
         </div>
       </div>
     )
   }
 
+  // Main screen
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
-    setLoading(true)
+    setSubmitting(true)
 
     try {
       if (mode === "join") {
@@ -55,7 +80,7 @@ export default function Home() {
         })
         if (!res.ok) {
           setError("大会が見つかりません。コードを確認してください。")
-          setLoading(false)
+          setSubmitting(false)
           return
         }
         const tournament = await res.json()
@@ -63,7 +88,7 @@ export default function Home() {
       } else {
         if (!name.trim()) {
           setError("大会名を入力してください")
-          setLoading(false)
+          setSubmitting(false)
           return
         }
         const res = await fetch("/api/tournaments", {
@@ -77,10 +102,8 @@ export default function Home() {
     } catch {
       setError("エラーが発生しました")
     }
-    setLoading(false)
+    setSubmitting(false)
   }
-
-  const xUsername = (session.user as { xUsername?: string })?.xUsername
 
   return (
     <div className="flex-1 flex items-center justify-center px-4">
@@ -88,10 +111,15 @@ export default function Home() {
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">⚡ SmashQueue</h1>
           <p className="text-[var(--muted)] text-sm">
-            ログイン中: <a href={`https://x.com/${xUsername}`} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">@{xUsername}</a>
+            ログイン中:{" "}
+            <a href={`https://x.com/${user.xUsername}`} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+              @{user.xUsername}
+            </a>
+            <button onClick={logout} className="ml-3 text-xs text-[var(--danger)] hover:underline">ログアウト</button>
           </p>
         </div>
 
+        {/* Tab */}
         <div className="flex bg-[var(--card)] rounded-xl p-1 border border-[var(--card-border)]">
           <button
             onClick={() => { setMode("join"); setError("") }}
@@ -131,10 +159,10 @@ export default function Home() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={submitting}
             className="w-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold py-4 rounded-xl transition-colors disabled:opacity-50"
           >
-            {loading ? "処理中..." : mode === "join" ? "参加する" : "作成する"}
+            {submitting ? "処理中..." : mode === "join" ? "参加する" : "作成する"}
           </button>
         </form>
 
@@ -145,7 +173,7 @@ export default function Home() {
 }
 
 function MyTournaments() {
-  const [tournaments, setTournaments] = useState<{ id: string; name: string; code: string; status: string }[]>([])
+  const [tournaments, setTournaments] = useState<{ id: string; name: string; code: string }[]>([])
   const [loaded, setLoaded] = useState(false)
 
   if (!loaded) {
