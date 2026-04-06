@@ -672,23 +672,30 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
           <p className="text-sm text-[var(--muted)]">募集はありません</p>
         ) : (
           <div className="space-y-2">
-            {recruitments.map((r) => (
-              <div key={r.id} className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-4">
+            {recruitments.map((r, idx) => (
+              <div key={r.id} className={`bg-[var(--card)] border rounded-xl p-4 ${idx === 0 ? "border-[var(--accent)]/30" : "border-[var(--card-border)]"}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <XLink player={r.creator} />
+                  <div className="flex items-center gap-2">
+                    {idx === 0 && <span className="text-xs bg-[var(--accent)]/20 text-[var(--accent)] px-2 py-0.5 rounded-full">次の対戦</span>}
+                    <XLink player={r.creator} />
+                  </div>
                   <RecruitmentTimer expiresAt={r.expiresAt} />
                 </div>
                 {r.template && <p className="text-sm text-[var(--accent)] mb-1">{r.template}</p>}
                 {r.description && <p className="text-sm text-[var(--muted)]">{r.description}</p>}
                 <div className="mt-3 flex gap-2">
                   {r.creator.id !== xId ? (
-                    <button
-                      onClick={() => joinRecruitment(r.id)}
-                      disabled={loading}
-                      className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      参加する
-                    </button>
+                    idx === 0 ? (
+                      <button
+                        onClick={() => joinRecruitment(r.id)}
+                        disabled={loading || isBusy}
+                        className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        参加する
+                      </button>
+                    ) : (
+                      <span className="text-xs text-[var(--muted)]">先の募集が成立するまでお待ちください</span>
+                    )
                   ) : (
                     <button
                       onClick={() => cancelRecruitment(r.id)}
