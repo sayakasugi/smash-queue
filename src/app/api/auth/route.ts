@@ -4,8 +4,7 @@ import { getSession, setSession, clearSession } from '@/lib/auth'
 // GET: セッション確認
 export async function GET() {
   const user = await getSession()
-  if (!user) return NextResponse.json({ user: null }, { status: 401 })
-  return NextResponse.json({ user })
+  return NextResponse.json({ user: user || null })
 }
 
 // POST: ログイン（X ID登録）

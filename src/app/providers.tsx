@@ -21,7 +21,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     fetch("/api/auth")
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.ok) return r.json()
+        return { user: null }
+      })
       .then((data) => { if (data.user) setUser(data.user) })
       .catch(() => {})
       .finally(() => setLoading(false))
