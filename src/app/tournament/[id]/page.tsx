@@ -77,6 +77,16 @@ export default function TournamentPage() {
     fetchSetups()
   }
 
+  // Toggle setup disabled
+  async function toggleSetup(setupId: string, currentStatus: string) {
+    await fetch(`/api/tournaments/${id}/setups`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setupId, disabled: currentStatus !== "disabled" }),
+    })
+    fetchSetups()
+  }
+
   // Delete setup
   async function removeSetup(setupId: string) {
     if (!confirm("この台を削除しますか？")) return
@@ -196,11 +206,12 @@ export default function TournamentPage() {
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-sm">{setup.name}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      setup.status === "disabled" ? "bg-gray-500/20 text-gray-400" :
                       setup.status === "idle" ? "bg-green-500/20 text-green-400" :
                       setup.status === "calling" ? "bg-yellow-500/20 text-yellow-400" :
                       "bg-red-500/20 text-red-400"
                     }`}>
-                      {setup.status === "idle" ? "空き" : setup.status === "calling" ? "呼出中" : "使用中"}
+                      {setup.status === "disabled" ? "使用不可" : setup.status === "idle" ? "空き" : setup.status === "calling" ? "呼出中" : "使用中"}
                     </span>
                   </div>
                   {setup.currentMatch && (
@@ -209,12 +220,20 @@ export default function TournamentPage() {
                     </p>
                   )}
                   {isOrganizer && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeSetup(setup.id) }}
-                      className="text-xs text-[var(--danger)] mt-2 hover:underline"
-                    >
-                      削除
-                    </button>
+                    <div className="flex gap-3 mt-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleSetup(setup.id, setup.status) }}
+                        className={`text-xs hover:underline ${setup.status === "disabled" ? "text-[var(--success)]" : "text-[var(--warning)]"}`}
+                      >
+                        {setup.status === "disabled" ? "有効にする" : "使用不可にする"}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeSetup(setup.id) }}
+                        className="text-xs text-[var(--danger)] hover:underline"
+                      >
+                        削除
+                      </button>
+                    </div>
                   )}
                 </button>
               ))
@@ -434,7 +453,8 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   const isPlayer1 = match?.player1.id === xId
   const myReady = isPlayer1 ? match?.player1Ready : match?.player2Ready
   const isInQueue = queue.some((e) => e.player1.id === xId || e.player2.id === xId)
-  const isBusy = isInMatch || isInQueue
+  const isDisabled = setup.status === "disabled"
+  const isBusy = isInMatch || isInQueue || isDisabled
 
   return (
     <div className="space-y-6">
@@ -442,13 +462,22 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold">{setup.name}</h2>
         <span className={`text-sm px-3 py-1 rounded-full ${
+          setup.status === "disabled" ? "bg-gray-500/20 text-gray-400" :
           setup.status === "idle" ? "bg-green-500/20 text-green-400" :
           setup.status === "calling" ? "bg-yellow-500/20 text-yellow-400" :
           "bg-red-500/20 text-red-400"
         }`}>
-          {setup.status === "idle" ? "空き" : setup.status === "calling" ? "呼出中" : "使用中"}
+          {setup.status === "disabled" ? "使用不可" : setup.status === "idle" ? "空き" : setup.status === "calling" ? "呼出中" : "使用中"}
         </span>
       </div>
+
+      {/* Disabled notice */}
+      {setup.status === "disabled" && (
+        <div className="p-5 rounded-xl border border-gray-500/30 bg-gray-500/5 text-center">
+          <p className="text-gray-400 font-semibold">この台は現在使用不可です</p>
+          <p className="text-xs text-[var(--muted)] mt-1">主催者が有効にするまでお待ちください</p>
+        </div>
+      )}
 
       {/* Current match */}
       {match && (

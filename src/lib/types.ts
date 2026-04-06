@@ -14,7 +14,7 @@ export type Setup = {
   id: string
   tournamentId: string
   name: string // 例: "台1", "Setup A"
-  status: 'idle' | 'in_use' | 'calling'
+  status: 'idle' | 'in_use' | 'calling' | 'disabled'
   currentMatch: Match | null
   queue: QueueEntry[]
 }

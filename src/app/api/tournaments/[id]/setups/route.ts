@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { getTournament, createSetup, getSetups, deleteSetup } from '@/lib/tournament'
+import { getTournament, createSetup, getSetups, deleteSetup, getSetup, updateSetup } from '@/lib/tournament'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -52,4 +52,24 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { setupId } = await req.json()
   await deleteSetup(setupId, id)
   return NextResponse.json({ success: true })
+}
+
+// PATCH: 台の有効/無効切替（主催者のみ）
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const user = await getSession()
+  if (!user) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+
+  const tournament = await getTournament(id)
+  if (!tournament) return NextResponse.json({ error: '大会が見つかりません' }, { status: 404 })
+  if (tournament.organizerId !== user.id) return NextResponse.json({ error: '主催者のみ操作可能です' }, { status: 403 })
+
+  const { setupId, disabled } = await req.json()
+  const setup = await getSetup(setupId)
+  if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
+
+  setup.status = disabled ? 'disabled' : 'idle'
+  if (disabled) setup.currentMatch = null
+  await updateSetup(setup)
+  return NextResponse.json(setup)
 }
