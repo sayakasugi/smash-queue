@@ -22,8 +22,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'create') {
-    const tournament = await createTournament(body.name, user)
-    return NextResponse.json(tournament, { status: 201 })
+    try {
+      const tournament = await createTournament(body.name, user)
+      return NextResponse.json(tournament, { status: 201 })
+    } catch (e) {
+      console.error('Tournament create error:', e)
+      return NextResponse.json({ error: String(e) }, { status: 500 })
+    }
   }
 
   return NextResponse.json({ error: '不正なアクション' }, { status: 400 })

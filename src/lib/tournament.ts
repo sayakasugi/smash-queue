@@ -29,6 +29,14 @@ function getTimer(t?: Tournament | null) {
 // === Tournament ===
 
 export async function createTournament(name: string, organizer: Player) {
+  // Ensure user exists in users table
+  const { data: existingUser } = await supabase.from('users').select('id').eq('id', organizer.id).single()
+  if (!existingUser) {
+    await supabase.from('users').insert({
+      id: organizer.id, x_username: organizer.xUsername, name: organizer.name, password_hash: '',
+    })
+  }
+
   const id = generateId()
   const code = generateCode()
   const { data, error } = await supabase.from('tournaments').insert({
@@ -53,6 +61,15 @@ export async function getTournamentByCode(code: string) {
 export async function joinTournament(code: string, player: Player) {
   const tournament = await getTournamentByCode(code)
   if (!tournament || tournament.status !== 'active') return null
+
+  // Ensure user exists
+  const { data: existingUser } = await supabase.from('users').select('id').eq('id', player.id).single()
+  if (!existingUser) {
+    await supabase.from('users').insert({
+      id: player.id, x_username: player.xUsername, name: player.name, password_hash: '',
+    })
+  }
+
   await supabase.from('tournament_participants').upsert({ tournament_id: tournament.id, user_id: player.id })
   return tournament
 }
