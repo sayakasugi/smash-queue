@@ -371,3 +371,26 @@ export async function getPlayerTournaments(playerId: string): Promise<Tournament
   }
   return tournaments.sort((a, b) => b.createdAt - a.createdAt)
 }
+
+// === Templates ===
+
+const DEFAULT_TEMPLATES = [
+  "レート1500前後",
+  "レート1600前後",
+  "レート1700前後",
+  "レート1800以上",
+  "おま3",
+  "おま5",
+  "おま10",
+  "誰でもOK",
+]
+
+export async function getTemplates(tournamentId: string): Promise<string[]> {
+  const data = await redis.get(`tournament:${tournamentId}:templates`)
+  const templates = parse<string[]>(data)
+  return templates || DEFAULT_TEMPLATES
+}
+
+export async function saveTemplates(tournamentId: string, templates: string[]): Promise<void> {
+  await redis.set(`tournament:${tournamentId}:templates`, JSON.stringify(templates))
+}

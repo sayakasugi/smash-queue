@@ -22,6 +22,10 @@ export default function TournamentPage() {
   const [batchTo, setBatchTo] = useState("")
   const [addMode, setAddMode] = useState<"single" | "batch">("single")
   const [error, setError] = useState("")
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false)
+  const [templates, setTemplates] = useState<string[]>([])
+  const [templateText, setTemplateText] = useState("")
+  const [templateLoading, setTemplateLoading] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const xId = user?.id || ""
@@ -85,6 +89,30 @@ export default function TournamentPage() {
     fetchSetups()
   }
 
+  // Fetch templates
+  async function openTemplateEditor() {
+    const res = await fetch(`/api/tournaments/${id}/templates`)
+    if (res.ok) {
+      const t = await res.json()
+      setTemplates(t)
+      setTemplateText(t.join("\n"))
+    }
+    setShowTemplateEditor(true)
+  }
+
+  async function saveTemplateChanges() {
+    setTemplateLoading(true)
+    const list = templateText.split("\n").map(s => s.trim()).filter(Boolean)
+    await fetch(`/api/tournaments/${id}/templates`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templates: list }),
+    })
+    setTemplates(list)
+    setShowTemplateEditor(false)
+    setTemplateLoading(false)
+  }
+
   // Notification sound
   function playSound() {
     if (!audioRef.current) {
@@ -110,7 +138,12 @@ export default function TournamentPage() {
             <h1 className="font-bold text-lg">{tournament.name}</h1>
             <p className="text-xs text-[var(--muted)]">コード: <span className="font-mono text-[var(--accent)]">{tournament.code}</span></p>
           </div>
-          <a href="/" className="text-sm text-[var(--muted)] hover:text-white">← 戻る</a>
+          <div className="flex items-center gap-3">
+            {isOrganizer && (
+              <button onClick={openTemplateEditor} className="text-xs text-[var(--accent)] hover:underline">テンプレート編集</button>
+            )}
+            <a href="/" className="text-sm text-[var(--muted)] hover:text-white">← 戻る</a>
+          </div>
         </div>
       </header>
 
@@ -215,6 +248,30 @@ export default function TournamentPage() {
         </div>
       </div>
       {error && <div className="fixed bottom-4 left-4 right-4 bg-[var(--danger)] text-white text-sm p-3 rounded-xl text-center">{error}</div>}
+
+      {/* Template Editor Modal */}
+      {showTemplateEditor && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setShowTemplateEditor(false)}>
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-6 w-full max-w-md space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">募集テンプレート編集</h3>
+            <p className="text-xs text-[var(--muted)]">1行に1つテンプレートを入力してください</p>
+            <textarea
+              value={templateText}
+              onChange={(e) => setTemplateText(e.target.value)}
+              rows={10}
+              className="w-full bg-[var(--background)] border border-[var(--card-border)] text-white text-sm py-3 px-3 rounded-lg focus:outline-none focus:border-[var(--accent)] resize-y"
+            />
+            <div className="flex gap-3">
+              <button onClick={saveTemplateChanges} disabled={templateLoading} className="flex-1 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50">
+                {templateLoading ? "保存中..." : "保存"}
+              </button>
+              <button onClick={() => setShowTemplateEditor(false)} className="flex-1 bg-[var(--card)] border border-[var(--card-border)] text-white font-semibold py-3 rounded-lg hover:border-[var(--accent)] transition-colors">
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -227,10 +284,18 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   const [setup, setSetup] = useState<Setup | null>(null)
   const [queue, setQueue] = useState<QueueEntry[]>([])
   const [recruitments, setRecruitments] = useState<Recruitment[]>([])
+  const [templateOptions, setTemplateOptions] = useState<string[]>([])
   const [template, setTemplate] = useState("")
   const [description, setDescription] = useState("")
   const [loading, setLoading] = useState(false)
   const prevStatusRef = useRef<string>("")
+
+  // Fetch templates
+  useEffect(() => {
+    fetch(`/api/tournaments/${tournamentId}/templates`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setTemplateOptions)
+  }, [tournamentId])
 
   // Poll setup state
   const fetchState = useCallback(async () => {
@@ -526,14 +591,9 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
             className="w-full bg-[var(--background)] border border-[var(--card-border)] text-white text-sm py-2.5 px-3 rounded-lg focus:outline-none focus:border-[var(--accent)]"
           >
             <option value="">テンプレートを選択（任意）</option>
-            <option value="レート1500前後">レート1500前後</option>
-            <option value="レート1600前後">レート1600前後</option>
-            <option value="レート1700前後">レート1700前後</option>
-            <option value="レート1800以上">レート1800以上</option>
-            <option value="おま3">おま3</option>
-            <option value="おま5">おま5</option>
-            <option value="おま10">おま10</option>
-            <option value="誰でもOK">誰でもOK</option>
+            {templateOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
           </select>
           <input
             type="text"

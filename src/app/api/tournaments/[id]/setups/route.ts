@@ -24,8 +24,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const prefix = body.prefix || '台'
     const from = Number(body.from)
     const to = Number(body.to)
-    if (isNaN(from) || isNaN(to) || from > to || to - from > 50) {
-      return NextResponse.json({ error: '範囲が不正です（最大50台）' }, { status: 400 })
+    if (isNaN(from) || isNaN(to) || from > to || to - from > 200) {
+      return NextResponse.json({ error: '範囲が不正です（最大200台）' }, { status: 400 })
     }
     const created = []
     for (let i = from; i <= to; i++) {
