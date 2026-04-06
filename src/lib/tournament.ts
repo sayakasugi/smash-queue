@@ -131,7 +131,7 @@ export async function createRecruitment(
     description,
     template,
     createdAt: now,
-    expiresAt: now + 10 * 60 * 1000,
+    expiresAt: 0, // Set when this becomes the first recruitment
     status: 'open',
     joinedBy: null,
   }
@@ -149,21 +149,48 @@ export async function getRecruitment(id: string): Promise<Recruitment | null> {
 export async function getSetupRecruitments(setupId: string): Promise<Recruitment[]> {
   const ids = await redis.smembers(`setup:${setupId}:recruitments`)
   const recruitments: Recruitment[] = []
-  const now = Date.now()
   for (const id of ids) {
     const r = await getRecruitment(id)
     if (!r || r.status !== 'open') continue
-    // Auto-expire
-    if (r.expiresAt <= now) {
-      r.status = 'expired'
-      await redis.set(`recruitment:${id}`, JSON.stringify(r))
-      await redis.srem(`setup:${setupId}:recruitments`, id)
-      await redis.del(`player:${r.creator.id}:active_recruitment:${r.tournamentId}`)
-      continue
-    }
     recruitments.push(r)
   }
-  return recruitments.sort((a, b) => a.createdAt - b.createdAt)
+
+  // Sort by creation time
+  recruitments.sort((a, b) => a.createdAt - b.createdAt)
+
+  const now = Date.now()
+  const result: Recruitment[] = []
+
+  for (let i = 0; i < recruitments.length; i++) {
+    const r = recruitments[i]
+
+    if (i === 0) {
+      // First recruitment: activate timer if not set
+      if (r.expiresAt === 0) {
+        r.expiresAt = now + 10 * 60 * 1000
+        await redis.set(`recruitment:${r.id}`, JSON.stringify(r))
+      }
+      // Check expiry
+      if (r.expiresAt <= now) {
+        r.status = 'expired'
+        await redis.set(`recruitment:${r.id}`, JSON.stringify(r))
+        await redis.srem(`setup:${setupId}:recruitments`, r.id)
+        await redis.del(`player:${r.creator.id}:active_recruitment:${r.tournamentId}`)
+        continue
+      }
+    }
+    // 2nd+ recruitments: timer stays at 0 (paused)
+
+    result.push(r)
+  }
+
+  // After removing expired first, re-check if new first needs timer
+  if (result.length > 0 && result[0].expiresAt === 0) {
+    result[0].expiresAt = now + 10 * 60 * 1000
+    await redis.set(`recruitment:${result[0].id}`, JSON.stringify(result[0]))
+  }
+
+  return result
 }
 
 export async function joinRecruitment(recruitmentId: string, player: Player): Promise<QueueEntry | null> {

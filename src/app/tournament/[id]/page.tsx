@@ -791,6 +791,10 @@ function Timer({ endsAt }: { endsAt: number }) {
 function RecruitmentTimer({ expiresAt }: { expiresAt: number }) {
   const [remaining, setRemaining] = useState("")
   useEffect(() => {
+    if (expiresAt === 0) {
+      setRemaining("待機中")
+      return
+    }
     const update = () => {
       const diff = Math.max(0, expiresAt - Date.now())
       const min = Math.floor(diff / 60000)
