@@ -149,9 +149,19 @@ export async function getRecruitment(id: string): Promise<Recruitment | null> {
 export async function getSetupRecruitments(setupId: string): Promise<Recruitment[]> {
   const ids = await redis.smembers(`setup:${setupId}:recruitments`)
   const recruitments: Recruitment[] = []
+  const now = Date.now()
   for (const id of ids) {
     const r = await getRecruitment(id)
-    if (r && r.status === 'open') recruitments.push(r)
+    if (!r || r.status !== 'open') continue
+    // Auto-expire
+    if (r.expiresAt <= now) {
+      r.status = 'expired'
+      await redis.set(`recruitment:${id}`, JSON.stringify(r))
+      await redis.srem(`setup:${setupId}:recruitments`, id)
+      await redis.del(`player:${r.creator.id}:active_recruitment:${r.tournamentId}`)
+      continue
+    }
+    recruitments.push(r)
   }
   return recruitments
 }
@@ -194,8 +204,18 @@ async function getPlayerActiveRecruitment(playerId: string, tournamentId: string
   const id = await redis.get<string>(`player:${playerId}:active_recruitment:${tournamentId}`)
   if (!id) return null
   const r = await getRecruitment(id)
-  if (r && r.status === 'open' && r.expiresAt > Date.now()) return r
-  return null
+  if (!r || r.status !== 'open') {
+    await redis.del(`player:${playerId}:active_recruitment:${tournamentId}`)
+    return null
+  }
+  if (r.expiresAt <= Date.now()) {
+    r.status = 'expired'
+    await redis.set(`recruitment:${id}`, JSON.stringify(r))
+    await redis.srem(`setup:${r.setupId}:recruitments`, id)
+    await redis.del(`player:${playerId}:active_recruitment:${tournamentId}`)
+    return null
+  }
+  return r
 }
 
 // === Queue ===
