@@ -46,26 +46,19 @@ export default function TournamentPage() {
 
   // Fetch setups (poll every 3 seconds)
   const fetchSetups = useCallback(async () => {
-    const res = await fetch(`/api/tournaments/${id}/setups`)
+    const res = await fetch(`/api/tournaments/${id}/status`)
     if (res.ok) {
       const data = await res.json()
       setSetups(data)
-      // Fetch recruit counts for each setup
       const counts: Record<string, number> = {}
-      await Promise.all(data.map(async (s: Setup) => {
-        const r = await fetch(`/api/setups/${s.id}/recruit`)
-        if (r.ok) {
-          const recruits = await r.json()
-          counts[s.id] = recruits.length
-        }
-      }))
+      for (const s of data) counts[s.id] = s.recruitCount || 0
       setSetupRecruitCounts(counts)
     }
   }, [id])
 
   useEffect(() => {
     fetchSetups()
-    const interval = setInterval(fetchSetups, 3000)
+    const interval = setInterval(fetchSetups, 10000)
     return () => clearInterval(interval)
   }, [fetchSetups])
 
@@ -528,7 +521,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
 
   useEffect(() => {
     fetchState()
-    const interval = setInterval(fetchState, 3000)
+    const interval = setInterval(fetchState, 10000)
     return () => clearInterval(interval)
   }, [fetchState])
 
