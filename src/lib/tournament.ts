@@ -163,7 +163,7 @@ export async function getSetupRecruitments(setupId: string): Promise<Recruitment
     }
     recruitments.push(r)
   }
-  return recruitments
+  return recruitments.sort((a, b) => a.createdAt - b.createdAt)
 }
 
 export async function joinRecruitment(recruitmentId: string, player: Player): Promise<QueueEntry | null> {
