@@ -64,12 +64,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!tournament) return NextResponse.json({ error: '大会が見つかりません' }, { status: 404 })
   if (tournament.organizerId !== user.id) return NextResponse.json({ error: '主催者のみ操作可能です' }, { status: 403 })
 
-  const { setupId, disabled } = await req.json()
-  const setup = await getSetup(setupId)
+  const body = await req.json()
+
+  // Bulk operation: { setupIds: [...], disabled: true/false }
+  if (Array.isArray(body.setupIds)) {
+    for (const sid of body.setupIds) {
+      const s = await getSetup(sid)
+      if (s) {
+        s.status = body.disabled ? 'disabled' : 'idle'
+        if (body.disabled) s.currentMatch = null
+        await updateSetup(s)
+      }
+    }
+    return NextResponse.json({ success: true })
+  }
+
+  // Single operation
+  const setup = await getSetup(body.setupId)
   if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
 
-  setup.status = disabled ? 'disabled' : 'idle'
-  if (disabled) setup.currentMatch = null
+  setup.status = body.disabled ? 'disabled' : 'idle'
+  if (body.disabled) setup.currentMatch = null
   await updateSetup(setup)
   return NextResponse.json(setup)
 }

@@ -21,6 +21,8 @@ export default function TournamentPage() {
   const [batchFrom, setBatchFrom] = useState("")
   const [batchTo, setBatchTo] = useState("")
   const [addMode, setAddMode] = useState<"single" | "batch">("single")
+  const [bulkMode, setBulkMode] = useState(false)
+  const [selectedSetupIds, setSelectedSetupIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState("")
   const [showTemplateEditor, setShowTemplateEditor] = useState(false)
   const [templates, setTemplates] = useState<string[]>([])
@@ -74,6 +76,50 @@ export default function TournamentPage() {
     })
     setBatchFrom("")
     setBatchTo("")
+    fetchSetups()
+  }
+
+  // Bulk operations
+  function toggleSelectSetup(setupId: string) {
+    setSelectedSetupIds(prev => {
+      const next = new Set(prev)
+      if (next.has(setupId)) next.delete(setupId)
+      else next.add(setupId)
+      return next
+    })
+  }
+
+  function selectAllSetups() {
+    if (selectedSetupIds.size === setups.length) {
+      setSelectedSetupIds(new Set())
+    } else {
+      setSelectedSetupIds(new Set(setups.map(s => s.id)))
+    }
+  }
+
+  async function bulkAction(action: "enable" | "disable" | "delete") {
+    if (selectedSetupIds.size === 0) return
+    const ids = Array.from(selectedSetupIds)
+
+    if (action === "delete") {
+      if (!confirm(`${ids.length}台を削除しますか？`)) return
+      for (const sid of ids) {
+        await fetch(`/api/tournaments/${id}/setups`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ setupId: sid }),
+        })
+      }
+    } else {
+      await fetch(`/api/tournaments/${id}/setups`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setupIds: ids, disabled: action === "disable" }),
+      })
+    }
+
+    setSelectedSetupIds(new Set())
+    setBulkMode(false)
     fetchSetups()
   }
 
@@ -161,7 +207,33 @@ export default function TournamentPage() {
         <div className="grid lg:grid-cols-[280px_1fr] gap-6">
           {/* Sidebar: Setup list (hide on mobile when setup is selected) */}
           <div className={`space-y-4 ${selectedSetup ? "hidden lg:block" : ""}`}>
-            <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider">台一覧</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider">台一覧</h2>
+              {isOrganizer && setups.length > 0 && (
+                <button
+                  onClick={() => { setBulkMode(!bulkMode); setSelectedSetupIds(new Set()) }}
+                  className={`text-xs transition-colors ${bulkMode ? "text-[var(--accent)]" : "text-[var(--muted)] hover:text-white"}`}
+                >
+                  {bulkMode ? "完了" : "一括操作"}
+                </button>
+              )}
+            </div>
+
+            {/* Bulk action bar */}
+            {bulkMode && (
+              <div className="space-y-2">
+                <button onClick={selectAllSetups} className="text-xs text-[var(--accent)] hover:underline">
+                  {selectedSetupIds.size === setups.length ? "選択解除" : "すべて選択"}（{selectedSetupIds.size}/{setups.length}）
+                </button>
+                {selectedSetupIds.size > 0 && (
+                  <div className="flex gap-2">
+                    <button onClick={() => bulkAction("enable")} className="flex-1 text-xs bg-green-500/20 text-green-400 py-2 rounded-lg hover:bg-green-500/30 transition-colors">有効</button>
+                    <button onClick={() => bulkAction("disable")} className="flex-1 text-xs bg-yellow-500/20 text-yellow-400 py-2 rounded-lg hover:bg-yellow-500/30 transition-colors">使用不可</button>
+                    <button onClick={() => bulkAction("delete")} className="flex-1 text-xs bg-red-500/20 text-red-400 py-2 rounded-lg hover:bg-red-500/30 transition-colors">削除</button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Add setup (organizer only) */}
             {isOrganizer && (
@@ -196,15 +268,24 @@ export default function TournamentPage() {
               setups.map((setup) => (
                 <button
                   key={setup.id}
-                  onClick={() => setSelectedSetup(setup.id)}
+                  onClick={() => bulkMode ? toggleSelectSetup(setup.id) : setSelectedSetup(setup.id)}
                   className={`w-full text-left p-4 rounded-xl border transition-colors ${
-                    selectedSetup === setup.id
+                    bulkMode && selectedSetupIds.has(setup.id)
+                      ? "bg-[var(--accent)]/20 border-[var(--accent)]"
+                      : selectedSetup === setup.id && !bulkMode
                       ? "bg-[var(--accent)]/10 border-[var(--accent)]"
                       : "bg-[var(--card)] border-[var(--card-border)] hover:border-[var(--accent)]"
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-sm">{setup.name}</span>
+                    <div className="flex items-center gap-2">
+                      {bulkMode && (
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center text-xs ${selectedSetupIds.has(setup.id) ? "bg-[var(--accent)] border-[var(--accent)] text-white" : "border-[var(--muted)]"}`}>
+                          {selectedSetupIds.has(setup.id) && "✓"}
+                        </div>
+                      )}
+                      <span className="font-semibold text-sm">{setup.name}</span>
+                    </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
                       setup.status === "disabled" ? "bg-gray-500/20 text-gray-400" :
                       setup.status === "idle" ? "bg-green-500/20 text-green-400" :
