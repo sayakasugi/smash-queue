@@ -26,10 +26,9 @@ export default function TournamentPage() {
 
   // Fetch tournament
   useEffect(() => {
-    fetch(`/api/tournaments`).then(r => r.json()).then((list: Tournament[]) => {
-      const t = list.find(t => t.id === id)
-      if (t) setTournament(t)
-    })
+    fetch(`/api/tournaments/${id}`)
+      .then(r => { if (r.ok) return r.json(); return null })
+      .then(data => { if (data) setTournament(data) })
   }, [id])
 
   // Fetch setups (poll every 3 seconds)
