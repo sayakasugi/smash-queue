@@ -31,17 +31,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, [])
 
   const login = useCallback(async (xUsername: string, name?: string) => {
-    const res = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ xUsername, name }),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      setUser(data.user)
-      return true
-    }
-    return false
+    // Direct set user (called after API auth succeeds)
+    setUser({ id: xUsername.toLowerCase(), name: name || xUsername, xUsername })
+    return true
   }, [])
 
   const logout = useCallback(async () => {
