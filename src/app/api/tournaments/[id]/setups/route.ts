@@ -17,8 +17,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!tournament) return NextResponse.json({ error: '大会が見つかりません' }, { status: 404 })
   if (tournament.organizerId !== user.id) return NextResponse.json({ error: '主催者のみ操作可能です' }, { status: 403 })
 
-  const { name } = await req.json()
-  const setup = await createSetup(id, name)
+  const body = await req.json()
+
+  // Batch create: { from: 1, to: 10, prefix: "台" }
+  if (body.from !== undefined && body.to !== undefined) {
+    const prefix = body.prefix || '台'
+    const from = Number(body.from)
+    const to = Number(body.to)
+    if (isNaN(from) || isNaN(to) || from > to || to - from > 50) {
+      return NextResponse.json({ error: '範囲が不正です（最大50台）' }, { status: 400 })
+    }
+    const created = []
+    for (let i = from; i <= to; i++) {
+      const setup = await createSetup(id, `${prefix}${i}`)
+      created.push(setup)
+    }
+    return NextResponse.json(created, { status: 201 })
+  }
+
+  // Single create
+  const setup = await createSetup(id, body.name)
   return NextResponse.json(setup, { status: 201 })
 }
 

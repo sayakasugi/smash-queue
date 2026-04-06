@@ -91,7 +91,8 @@ export async function getSetups(tournamentId: string): Promise<Setup[]> {
     const setup = await getSetup(id)
     if (setup) setups.push(setup)
   }
-  return setups
+  // Sort by name (natural sort for numbers)
+  return setups.sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }))
 }
 
 export async function updateSetup(setup: Setup): Promise<void> {

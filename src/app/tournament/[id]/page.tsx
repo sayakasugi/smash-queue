@@ -18,6 +18,9 @@ export default function TournamentPage() {
   const [setups, setSetups] = useState<Setup[]>([])
   const [selectedSetup, setSelectedSetup] = useState<string | null>(null)
   const [newSetupName, setNewSetupName] = useState("")
+  const [batchFrom, setBatchFrom] = useState("")
+  const [batchTo, setBatchTo] = useState("")
+  const [addMode, setAddMode] = useState<"single" | "batch">("single")
   const [error, setError] = useState("")
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
@@ -43,7 +46,7 @@ export default function TournamentPage() {
     return () => clearInterval(interval)
   }, [fetchSetups])
 
-  // Add setup
+  // Add setup (single)
   async function addSetup() {
     if (!newSetupName.trim()) return
     await fetch(`/api/tournaments/${id}/setups`, {
@@ -52,6 +55,21 @@ export default function TournamentPage() {
       body: JSON.stringify({ name: newSetupName.trim() }),
     })
     setNewSetupName("")
+    fetchSetups()
+  }
+
+  // Add setups (batch)
+  async function addBatchSetups() {
+    const from = Number(batchFrom)
+    const to = Number(batchTo)
+    if (isNaN(from) || isNaN(to) || from > to) return
+    await fetch(`/api/tournaments/${id}/setups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to, prefix: "台" }),
+    })
+    setBatchFrom("")
+    setBatchTo("")
     fetchSetups()
   }
 
@@ -104,16 +122,27 @@ export default function TournamentPage() {
 
             {/* Add setup (organizer only) */}
             {isOrganizer && (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newSetupName}
-                  onChange={(e) => setNewSetupName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addSetup()}
-                  placeholder="台名（例: 台1）"
-                  className="flex-1 bg-[var(--card)] border border-[var(--card-border)] text-white text-sm py-2 px-3 rounded-lg focus:outline-none focus:border-[var(--accent)]"
-                />
-                <button onClick={addSetup} className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm px-3 py-2 rounded-lg transition-colors">追加</button>
+              <div className="space-y-2">
+                <div className="flex gap-1 bg-[var(--card)] rounded-lg p-0.5 border border-[var(--card-border)]">
+                  <button onClick={() => setAddMode("single")} className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${addMode === "single" ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`}>個別追加</button>
+                  <button onClick={() => setAddMode("batch")} className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${addMode === "batch" ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`}>一括追加</button>
+                </div>
+                {addMode === "single" ? (
+                  <div className="flex gap-2">
+                    <input type="text" value={newSetupName} onChange={(e) => setNewSetupName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSetup()} placeholder="台名（例: 台1）" className="flex-1 bg-[var(--card)] border border-[var(--card-border)] text-white text-sm py-2 px-3 rounded-lg focus:outline-none focus:border-[var(--accent)]" />
+                    <button onClick={addSetup} className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm px-3 py-2 rounded-lg transition-colors">追加</button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <span className="text-xs text-[var(--muted)]">台</span>
+                      <input type="number" value={batchFrom} onChange={(e) => setBatchFrom(e.target.value)} placeholder="1" className="w-16 bg-[var(--card)] border border-[var(--card-border)] text-white text-sm py-2 px-2 rounded-lg text-center focus:outline-none focus:border-[var(--accent)]" />
+                      <span className="text-xs text-[var(--muted)]">〜</span>
+                      <input type="number" value={batchTo} onChange={(e) => setBatchTo(e.target.value)} placeholder="10" className="w-16 bg-[var(--card)] border border-[var(--card-border)] text-white text-sm py-2 px-2 rounded-lg text-center focus:outline-none focus:border-[var(--accent)]" />
+                    </div>
+                    <button onClick={addBatchSetups} className="w-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm px-3 py-2 rounded-lg transition-colors">一括追加</button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -269,32 +298,50 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
 
   // Ready
   async function markReady(matchId: string) {
-    await fetch(`/api/setups/${setupId}/match`, {
+    setLoading(true)
+    const res = await fetch(`/api/setups/${setupId}/match`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "ready", matchId }),
     })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "エラー" }))
+      alert(err.error || "操作に失敗しました")
+    }
     await fetchState()
+    setLoading(false)
   }
 
   // End match
   async function endMatch(matchId: string) {
-    await fetch(`/api/setups/${setupId}/match`, {
+    setLoading(true)
+    const res = await fetch(`/api/setups/${setupId}/match`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "end", matchId }),
     })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "エラー" }))
+      alert(err.error || "操作に失敗しました")
+    }
     await fetchState()
+    setLoading(false)
   }
 
   // Force end (organizer)
   async function forceEnd() {
-    await fetch(`/api/setups/${setupId}/match`, {
+    setLoading(true)
+    const res = await fetch(`/api/setups/${setupId}/match`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "force_end" }),
     })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "エラー" }))
+      alert(err.error || "操作に失敗しました")
+    }
     await fetchState()
+    setLoading(false)
   }
 
   // Force remove from queue (organizer)
@@ -347,22 +394,34 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
           {match.status === "calling" && isInMatch && !myReady && (
             <button
               onClick={() => markReady(match.id)}
-              className="w-full mt-4 bg-[var(--success)] hover:opacity-90 text-white font-bold py-3 rounded-xl transition-opacity"
+              disabled={loading}
+              className="w-full mt-4 bg-[var(--success)] hover:opacity-90 text-white font-bold py-3 rounded-xl transition-opacity disabled:opacity-50"
             >
-              席についた
+              {loading ? "処理中..." : "🪑 席についた"}
             </button>
           )}
           {match.status === "calling" && isInMatch && myReady && (
-            <p className="text-center mt-4 text-[var(--success)] text-sm">✓ 準備完了 — 相手を待っています</p>
+            <p className="text-center mt-4 text-[var(--success)] text-sm font-semibold">✓ 準備完了 — 相手を待っています</p>
+          )}
+
+          {/* Ready button for non-participants (show status) */}
+          {match.status === "calling" && !isInMatch && (
+            <div className="mt-4 text-center text-sm text-[var(--muted)]">
+              <p>両プレイヤーの着席を待っています...</p>
+              <p className="text-xs mt-1">
+                {match.player1.name}: {match.player1Ready ? "✅ 準備完了" : "⏳ 待機中"} / {match.player2.name}: {match.player2Ready ? "✅ 準備完了" : "⏳ 待機中"}
+              </p>
+            </div>
           )}
 
           {/* End match button */}
           {match.status === "active" && isInMatch && (
             <button
               onClick={() => endMatch(match.id)}
-              className="w-full mt-4 bg-[var(--card)] border border-[var(--card-border)] hover:border-[var(--danger)] text-[var(--danger)] font-semibold py-3 rounded-xl transition-colors"
+              disabled={loading}
+              className="w-full mt-4 bg-[var(--card)] border border-[var(--card-border)] hover:border-[var(--danger)] text-[var(--danger)] font-semibold py-3 rounded-xl transition-colors disabled:opacity-50"
             >
-              対戦終了
+              {loading ? "処理中..." : "対戦終了"}
             </button>
           )}
 
@@ -370,9 +429,10 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
           {isOrganizer && (
             <button
               onClick={forceEnd}
-              className="w-full mt-2 text-xs text-[var(--danger)] hover:underline"
+              disabled={loading}
+              className="w-full mt-2 text-xs text-[var(--danger)] hover:underline disabled:opacity-50"
             >
-              [主催者] 強制終了
+              {loading ? "処理中..." : "[主催者] 強制終了"}
             </button>
           )}
         </div>
