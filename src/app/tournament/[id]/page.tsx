@@ -116,8 +116,8 @@ export default function TournamentPage() {
 
       <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
         <div className="grid lg:grid-cols-[280px_1fr] gap-6">
-          {/* Sidebar: Setup list */}
-          <div className="space-y-4">
+          {/* Sidebar: Setup list (hide on mobile when setup is selected) */}
+          <div className={`space-y-4 ${selectedSetup ? "hidden lg:block" : ""}`}>
             <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider">台一覧</h2>
 
             {/* Add setup (organizer only) */}
@@ -189,8 +189,15 @@ export default function TournamentPage() {
           </div>
 
           {/* Main content: Selected setup detail */}
-          <div>
+          <div className={`${!selectedSetup ? "hidden lg:block" : ""}`}>
             {selectedSetup ? (
+              <>
+              <button
+                onClick={() => setSelectedSetup(null)}
+                className="lg:hidden text-sm text-[var(--muted)] hover:text-white mb-4"
+              >
+                ← 台一覧に戻る
+              </button>
               <SetupDetail
                 setupId={selectedSetup}
                 tournamentId={id}
@@ -198,6 +205,7 @@ export default function TournamentPage() {
                 isOrganizer={isOrganizer}
                 playSound={playSound}
               />
+              </>
             ) : (
               <div className="flex items-center justify-center h-64 text-[var(--muted)]">
                 ← 台を選択してください
