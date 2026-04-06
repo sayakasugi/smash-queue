@@ -552,7 +552,8 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   const myReady = isPlayer1 ? match?.player1Ready : match?.player2Ready
   const isInQueue = queue.some((e) => e.player1.id === xId || e.player2.id === xId)
   const isDisabled = setup.status === "disabled"
-  const isBusy = isInMatch || isInQueue || isDisabled
+  const hasActiveRecruitment = recruitments.some((r) => r.creator.id === xId)
+  const isBusy = isInMatch || isInQueue || isDisabled || hasActiveRecruitment
 
   return (
     <div className="space-y-6">
@@ -705,7 +706,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       {isBusy ? (
         <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-5 text-center">
           <p className="text-sm text-[var(--muted)]">
-            {isInMatch ? "対戦中は新しい募集を作成できません" : "キューで待機中は新しい募集を作成できません"}
+            {isDisabled ? "この台は使用不可です" : isInMatch ? "対戦中は新しい募集を作成できません" : hasActiveRecruitment ? "既に募集中です。募集をキャンセルしてから再度お試しください" : "キューで待機中は新しい募集を作成できません"}
           </p>
         </div>
       ) : (
