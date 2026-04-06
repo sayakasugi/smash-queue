@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { getSetup, getQueue, playerReady, endMatch, forceEndMatch, forceRemoveFromQueue, getTournament } from '@/lib/tournament'
+import { getSetup, getQueue, playerReady, endMatch, forceEndMatch, forceRemoveFromQueue, getTournament, checkCallingTimeout } from '@/lib/tournament'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+
+  // Check calling timeout before returning state
+  const timeoutResult = await checkCallingTimeout(id)
+
   const setup = await getSetup(id)
   if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
   const queue = await getQueue(id)
-  return NextResponse.json({ setup, queue })
+  return NextResponse.json({ setup, queue, ...(timeoutResult.timedOut ? { timeout: { penalized: timeoutResult.penalized } } : {}) })
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

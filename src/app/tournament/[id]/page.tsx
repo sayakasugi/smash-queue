@@ -433,6 +433,10 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
           if (document.hidden) document.title = "🔔 順番が来ました！ - SmashQueue"
         }
       }
+      // Show timeout notification
+      if (data.timeout?.penalized?.length) {
+        alert(`呼び出しタイムアウト: ${data.timeout.penalized.join(", ")} に10分のペナルティが課されました`)
+      }
       prevStatusRef.current = data.setup?.currentMatch?.status || ""
       setSetup(data.setup)
       setQueue(data.queue)

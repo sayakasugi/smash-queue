@@ -348,6 +348,46 @@ export async function endMatch(matchId: string): Promise<void> {
   }
 }
 
+// === Calling timeout check ===
+
+export async function checkCallingTimeout(setupId: string): Promise<{ timedOut: boolean; penalized: string[] }> {
+  const setup = await getSetup(setupId)
+  if (!setup || !setup.currentMatch || setup.currentMatch.status !== 'calling') {
+    return { timedOut: false, penalized: [] }
+  }
+
+  const match = setup.currentMatch
+  const now = Date.now()
+
+  // Not timed out yet
+  if (match.endsAt > now) {
+    return { timedOut: false, penalized: [] }
+  }
+
+  // Timed out — penalize players who didn't press ready
+  const penalized: string[] = []
+  if (!match.player1Ready) {
+    await addPenalty(match.player1.id, setup.tournamentId)
+    penalized.push(match.player1.name || match.player1.xUsername)
+  }
+  if (!match.player2Ready) {
+    await addPenalty(match.player2.id, setup.tournamentId)
+    penalized.push(match.player2.name || match.player2.xUsername)
+  }
+
+  // Cancel the match
+  match.status = 'finished'
+  await redis.set(`match:${match.id}`, JSON.stringify(match))
+
+  // Reset setup and start next match
+  setup.status = 'idle'
+  setup.currentMatch = null
+  await updateSetup(setup)
+  await startNextMatch(setupId)
+
+  return { timedOut: true, penalized }
+}
+
 // === Force operations (organizer) ===
 
 export async function forceEndMatch(setupId: string): Promise<void> {
