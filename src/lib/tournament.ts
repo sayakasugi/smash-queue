@@ -375,6 +375,32 @@ export async function endMatch(matchId: string): Promise<void> {
   }
 }
 
+// === Match time check ===
+
+export async function checkMatchTimeout(setupId: string): Promise<{ expired: boolean; fiveMinWarning: boolean }> {
+  const setup = await getSetup(setupId)
+  if (!setup || !setup.currentMatch || setup.currentMatch.status !== 'active') {
+    return { expired: false, fiveMinWarning: false }
+  }
+
+  const match = setup.currentMatch
+  const now = Date.now()
+  const remaining = match.endsAt - now
+
+  // Match expired
+  if (remaining <= 0) {
+    await endMatch(match.id)
+    return { expired: true, fiveMinWarning: false }
+  }
+
+  // 5 minute warning (between 4:57 and 5:00 remaining to avoid repeat alerts)
+  if (remaining <= 5 * 60 * 1000 && remaining > 5 * 60 * 1000 - 3000) {
+    return { expired: false, fiveMinWarning: true }
+  }
+
+  return { expired: false, fiveMinWarning: false }
+}
+
 // === Calling timeout check ===
 
 export async function checkCallingTimeout(setupId: string): Promise<{ timedOut: boolean; penalized: string[] }> {

@@ -437,6 +437,23 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       if (data.timeout?.penalized?.length) {
         alert(`呼び出しタイムアウト: ${data.timeout.penalized.join(", ")} に10分のペナルティが課されました`)
       }
+      // 5 minute warning
+      if (data.fiveMinWarning) {
+        const m = data.setup?.currentMatch
+        if (m && (m.player1.id === xId || m.player2.id === xId)) {
+          playSound()
+          if (document.hidden) document.title = "⚠️ 残り5分！ - SmashQueue"
+          alert("対戦終了まで残り5分です")
+        }
+      }
+      // Match expired
+      if (data.matchExpired) {
+        const m = data.setup?.currentMatch
+        if (m && (m.player1.id === xId || m.player2.id === xId)) {
+          playSound()
+          alert("対戦時間が終了しました")
+        }
+      }
       prevStatusRef.current = data.setup?.currentMatch?.status || ""
       setSetup(data.setup)
       setQueue(data.queue)
