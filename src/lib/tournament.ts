@@ -278,6 +278,8 @@ export async function playerReady(matchId: string, playerId: string) {
     updates.ends_at = new Date(now.getTime() + timer.matchDuration).toISOString()
 
     await supabase.from('setups').update({ status: 'in_use' }).eq('id', match.setup_id)
+    // Mark queue entry as active
+    await supabase.from('queue_entries').update({ status: 'active' }).eq('setup_id', match.setup_id).in('status', ['calling']).eq('player1_id', match.player1_id).eq('player2_id', match.player2_id)
   }
 
   await supabase.from('matches').update(updates).eq('id', matchId)
@@ -289,6 +291,8 @@ export async function endMatch(matchId: string) {
   if (!match) return
 
   await supabase.from('matches').update({ status: 'finished' }).eq('id', matchId)
+  // Mark queue entries as completed
+  await supabase.from('queue_entries').update({ status: 'completed' }).eq('setup_id', match.setup_id).in('status', ['calling', 'active']).eq('player1_id', match.player1_id).eq('player2_id', match.player2_id)
   await supabase.from('setups').update({ status: 'idle', current_match_id: null }).eq('id', match.setup_id)
   await startNextMatch(match.setup_id)
 }
