@@ -16,6 +16,7 @@ export default function TournamentPage() {
   const { user } = useAuth()
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [setups, setSetups] = useState<Setup[]>([])
+  const [setupRecruitCounts, setSetupRecruitCounts] = useState<Record<string, number>>({})
   const [selectedSetup, setSelectedSetup] = useState<string | null>(null)
   const [newSetupName, setNewSetupName] = useState("")
   const [batchFrom, setBatchFrom] = useState("")
@@ -43,7 +44,20 @@ export default function TournamentPage() {
   // Fetch setups (poll every 3 seconds)
   const fetchSetups = useCallback(async () => {
     const res = await fetch(`/api/tournaments/${id}/setups`)
-    if (res.ok) setSetups(await res.json())
+    if (res.ok) {
+      const data = await res.json()
+      setSetups(data)
+      // Fetch recruit counts for each setup
+      const counts: Record<string, number> = {}
+      await Promise.all(data.map(async (s: Setup) => {
+        const r = await fetch(`/api/setups/${s.id}/recruit`)
+        if (r.ok) {
+          const recruits = await r.json()
+          counts[s.id] = recruits.length
+        }
+      }))
+      setSetupRecruitCounts(counts)
+    }
   }, [id])
 
   useEffect(() => {
@@ -299,6 +313,9 @@ export default function TournamentPage() {
                     <p className="text-xs text-[var(--muted)] mt-2">
                       {setup.currentMatch.player1.name} vs {setup.currentMatch.player2.name}
                     </p>
+                  )}
+                  {(setupRecruitCounts[setup.id] || 0) > 0 && (
+                    <p className="text-xs text-[var(--accent)] mt-1">📢 募集中: {setupRecruitCounts[setup.id]}件</p>
                   )}
                   {isOrganizer && (
                     <div className="flex gap-3 mt-2">
