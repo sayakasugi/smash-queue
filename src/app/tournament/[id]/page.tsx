@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "../../providers"
 import { ProfilePage } from "@/components/profile-page"
+import { useSetups, useSetupDetail, useMyStatus, useMatchNotification } from "@/hooks/use-realtime"
 
 type Tournament = { id: string; name: string; code: string; organizer_id: string }
 type Player = { id: string; name: string; xUsername: string }
-type Setup = { id: string; name: string; status: string; currentMatch: Match | null; tournament_id: string }
+type Setup = { id: string; name: string; status: string; tournament_id: string }
 type Match = {
   id: string; setup_id: string;
   player1_id: string; player1_name: string; player1_x: string;
@@ -47,8 +48,6 @@ export default function TournamentPage() {
   const { id } = useParams<{ id: string }>()
   const { user, logout } = useAuth()
   const [tournament, setTournament] = useState<Tournament | null>(null)
-  const [setups, setSetups] = useState<Setup[]>([])
-  const [setupRecruitCounts, setSetupRecruitCounts] = useState<Record<string, number>>({})
   const [selectedSetup, setSelectedSetup] = useState<string | null>(null)
   const [newSetupName, setNewSetupName] = useState("")
   const [batchFrom, setBatchFrom] = useState("")
@@ -70,30 +69,16 @@ export default function TournamentPage() {
   const xId = user?.id || ""
   const isOrganizer = tournament?.organizer_id === xId
 
+  // Realtime setups
+  const { setups: realtimeSetups, recruitCounts, refetch: refetchSetups } = useSetups(id)
+  const setups = realtimeSetups as (Setup & Record<string, unknown>)[]
+
   // Fetch tournament
   useEffect(() => {
     fetch(`/api/tournaments/${id}`)
       .then(r => { if (r.ok) return r.json(); return null })
       .then(data => { if (data) setTournament(data) })
   }, [id])
-
-  // Fetch setups (poll every 3 seconds)
-  const fetchSetups = useCallback(async () => {
-    const res = await fetch(`/api/tournaments/${id}/status`)
-    if (res.ok) {
-      const data = await res.json()
-      setSetups(data)
-      const counts: Record<string, number> = {}
-      for (const s of data) counts[s.id] = s.recruitCount || 0
-      setSetupRecruitCounts(counts)
-    }
-  }, [id])
-
-  useEffect(() => {
-    fetchSetups()
-    const interval = setInterval(fetchSetups, 10000)
-    return () => clearInterval(interval)
-  }, [fetchSetups])
 
   // Add setup (single)
   async function addSetup() {
@@ -104,7 +89,7 @@ export default function TournamentPage() {
       body: JSON.stringify({ name: newSetupName.trim() }),
     })
     setNewSetupName("")
-    fetchSetups()
+    refetchSetups()
   }
 
   // Add setups (batch)
@@ -119,7 +104,7 @@ export default function TournamentPage() {
     })
     setBatchFrom("")
     setBatchTo("")
-    fetchSetups()
+    refetchSetups()
   }
 
   // Bulk operations
@@ -163,7 +148,7 @@ export default function TournamentPage() {
 
     setSelectedSetupIds(new Set())
     setBulkMode(false)
-    fetchSetups()
+    refetchSetups()
   }
 
   // Toggle setup disabled
@@ -173,7 +158,7 @@ export default function TournamentPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ setupId, disabled: currentStatus !== "disabled" }),
     })
-    fetchSetups()
+    refetchSetups()
   }
 
   // Delete setup
@@ -185,7 +170,7 @@ export default function TournamentPage() {
       body: JSON.stringify({ setupId }),
     })
     if (selectedSetup === setupId) setSelectedSetup(null)
-    fetchSetups()
+    refetchSetups()
   }
 
   // Timer settings
@@ -335,7 +320,7 @@ export default function TournamentPage() {
               <p className="text-sm text-[var(--muted)]">台がまだありません</p>
             ) : (
               setups.map((setup) => {
-                const currentMatch = setup.currentMatch
+                const currentMatchId = (setup as Record<string, unknown>).current_match_id as string | null
                 return (
                 <button
                   key={setup.id}
@@ -366,13 +351,13 @@ export default function TournamentPage() {
                       {setup.status === "disabled" ? "使用不可" : setup.status === "idle" ? "空き" : setup.status === "calling" ? "呼出中" : "使用中"}
                     </span>
                   </div>
-                  {currentMatch && (
+                  {currentMatchId && (
                     <p className="text-xs text-[var(--muted)] mt-2">
-                      {currentMatch.player1_name} vs {currentMatch.player2_name}
+                      対戦中
                     </p>
                   )}
-                  {(setupRecruitCounts[setup.id] || 0) > 0 && (
-                    <p className="text-xs text-[var(--accent)] mt-1">📢 募集中: {setupRecruitCounts[setup.id]}件</p>
+                  {(recruitCounts[setup.id] || 0) > 0 && (
+                    <p className="text-xs text-[var(--accent)] mt-1">📢 募集中: {recruitCounts[setup.id]}件</p>
                   )}
                   {isOrganizer && (
                     <div className="flex gap-3 mt-2">
@@ -497,72 +482,32 @@ export default function TournamentPage() {
 function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   setupId: string; tournamentId: string; xId: string; isOrganizer: boolean; playSound: () => void
 }) {
-  const [setup, setSetup] = useState<Setup | null>(null)
-  const [queue, setQueue] = useState<QueueEntry[]>([])
-  const [recruitments, setRecruitments] = useState<Recruitment[]>([])
   const [templateOptions, setTemplateOptions] = useState<string[]>([])
   const [template, setTemplate] = useState("")
   const [description, setDescription] = useState("")
   const [loading, setLoading] = useState(false)
-  const [myStatus, setMyStatus] = useState<{ hasRecruitment: boolean; inQueue: boolean; inMatch: boolean; recruitmentSetupName: string }>({ hasRecruitment: false, inQueue: false, inMatch: false, recruitmentSetupName: "" })
-  const prevStatusRef = useRef<string>("")
 
-  // Fetch templates
+  // Realtime hooks
+  const { setup: realtimeSetup, currentMatch: realtimeCurrentMatch, queue: realtimeQueue, recruitments: realtimeRecruitments, refetch: refetchDetail } = useSetupDetail(setupId, tournamentId)
+  const myStatus = useMyStatus(tournamentId, xId)
+  useMatchNotification(realtimeCurrentMatch, xId, playSound)
+
+  const setup = realtimeSetup as (Setup & Record<string, unknown>) | null
+  const currentMatch = realtimeCurrentMatch as Match | null
+  const queue = realtimeQueue as QueueEntry[]
+  const recruitments = realtimeRecruitments as Recruitment[]
+
+  // Fetch templates (one-time, not realtime)
   useEffect(() => {
     fetch(`/api/tournaments/${tournamentId}/templates`)
       .then(r => r.ok ? r.json() : [])
       .then(setTemplateOptions)
   }, [tournamentId])
 
-  // Poll setup state
-  const fetchState = useCallback(async () => {
-    const [matchRes, recruitRes, statusRes] = await Promise.all([
-      fetch(`/api/setups/${setupId}/match`),
-      fetch(`/api/setups/${setupId}/recruit`),
-      fetch(`/api/tournaments/${tournamentId}/my-status`),
-    ])
-    if (statusRes.ok) setMyStatus(await statusRes.json())
-    if (matchRes.ok) {
-      const data = await matchRes.json()
-      const currentMatch: Match | null = data.setup?.currentMatch || null
-      // Notify if calling and involves this player
-      if (currentMatch?.status === "calling" && prevStatusRef.current !== "calling") {
-        if (currentMatch.player1_id === xId || currentMatch.player2_id === xId) {
-          playSound()
-          if (document.hidden) document.title = "🔔 順番が来ました！ - SmashQueue"
-        }
-      }
-      // Show timeout notification
-      if (data.timeout?.penalized?.length) {
-        alert(`呼び出しタイムアウト: ${data.timeout.penalized.join(", ")} に10分のペナルティが課されました`)
-      }
-      // 5 minute warning
-      if (data.fiveMinWarning) {
-        if (currentMatch && (currentMatch.player1_id === xId || currentMatch.player2_id === xId)) {
-          playSound()
-          if (document.hidden) document.title = "⚠️ 残り5分！ - SmashQueue"
-          alert("対戦終了まで残り5分です")
-        }
-      }
-      // Match expired
-      if (data.matchExpired) {
-        if (currentMatch && (currentMatch.player1_id === xId || currentMatch.player2_id === xId)) {
-          playSound()
-          alert("対戦時間が終了しました")
-        }
-      }
-      prevStatusRef.current = currentMatch?.status || ""
-      setSetup(data.setup)
-      setQueue(data.queue)
-    }
-    if (recruitRes.ok) setRecruitments(await recruitRes.json())
-  }, [setupId, xId, playSound])
-
+  // Trigger timeout check once when opening setup detail
   useEffect(() => {
-    fetchState()
-    const interval = setInterval(fetchState, 10000)
-    return () => clearInterval(interval)
-  }, [fetchState])
+    fetch(`/api/setups/${setupId}/match`).catch(() => {})
+  }, [setupId])
 
   // Restore title on focus
   useEffect(() => {
@@ -581,7 +526,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
     })
     setTemplate("")
     setDescription("")
-    await fetchState()
+    refetchDetail()
     setLoading(false)
   }
 
@@ -593,7 +538,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "join", recruitmentId }),
     })
-    await fetchState()
+    refetchDetail()
     setLoading(false)
   }
 
@@ -604,7 +549,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "cancel", recruitmentId }),
     })
-    await fetchState()
+    refetchDetail()
   }
 
   // Ready
@@ -619,7 +564,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       const err = await res.json().catch(() => ({ error: "エラー" }))
       alert(err.error || "操作に失敗しました")
     }
-    await fetchState()
+    refetchDetail()
     setLoading(false)
   }
 
@@ -635,7 +580,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       const err = await res.json().catch(() => ({ error: "エラー" }))
       alert(err.error || "操作に失敗しました")
     }
-    await fetchState()
+    refetchDetail()
     setLoading(false)
   }
 
@@ -651,7 +596,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       const err = await res.json().catch(() => ({ error: "エラー" }))
       alert(err.error || "操作に失敗しました")
     }
-    await fetchState()
+    refetchDetail()
     setLoading(false)
   }
 
@@ -662,12 +607,12 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "force_remove", entryId }),
     })
-    await fetchState()
+    refetchDetail()
   }
 
   if (!setup) return <div className="animate-pulse text-[var(--muted)]">読み込み中...</div>
 
-  const match = setup.currentMatch
+  const match = currentMatch
   const isInMatch = match && (match.player1_id === xId || match.player2_id === xId)
   const isPlayer1 = match?.player1_id === xId
   const myReady = isPlayer1 ? match?.player1_ready : match?.player2_ready
