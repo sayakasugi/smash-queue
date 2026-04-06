@@ -29,6 +29,9 @@ export default function TournamentPage() {
   const [templates, setTemplates] = useState<string[]>([])
   const [templateText, setTemplateText] = useState("")
   const [templateLoading, setTemplateLoading] = useState(false)
+  const [showTimerSettings, setShowTimerSettings] = useState(false)
+  const [timerSettings, setTimerSettings] = useState({ matchDuration: 30, recruitmentExpiry: 10, callingTimeout: 5, fiveMinWarning: 5, penaltyDuration: 10 })
+  const [timerLoading, setTimerLoading] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const xId = user?.id || ""
@@ -159,6 +162,24 @@ export default function TournamentPage() {
     fetchSetups()
   }
 
+  // Timer settings
+  async function openTimerSettings() {
+    const res = await fetch(`/api/tournaments/${id}/settings`)
+    if (res.ok) setTimerSettings(await res.json())
+    setShowTimerSettings(true)
+  }
+
+  async function saveTimerSettings() {
+    setTimerLoading(true)
+    await fetch(`/api/tournaments/${id}/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(timerSettings),
+    })
+    setShowTimerSettings(false)
+    setTimerLoading(false)
+  }
+
   // Fetch templates
   async function openTemplateEditor() {
     const res = await fetch(`/api/tournaments/${id}/templates`)
@@ -210,7 +231,10 @@ export default function TournamentPage() {
           </div>
           <div className="flex items-center gap-3">
             {isOrganizer && (
-              <button onClick={openTemplateEditor} className="text-xs text-[var(--accent)] hover:underline">テンプレート編集</button>
+              <>
+                <button onClick={openTimerSettings} className="text-xs text-[var(--accent)] hover:underline">時間設定</button>
+                <button onClick={openTemplateEditor} className="text-xs text-[var(--accent)] hover:underline">テンプレート</button>
+              </>
             )}
             <a href="/" className="text-sm text-[var(--muted)] hover:text-white">← 戻る</a>
           </div>
@@ -383,6 +407,47 @@ export default function TournamentPage() {
                 {templateLoading ? "保存中..." : "保存"}
               </button>
               <button onClick={() => setShowTemplateEditor(false)} className="flex-1 bg-[var(--card)] border border-[var(--card-border)] text-white font-semibold py-3 rounded-lg hover:border-[var(--accent)] transition-colors">
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Timer Settings Modal */}
+      {showTimerSettings && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setShowTimerSettings(false)}>
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-6 w-full max-w-md space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">時間設定</h3>
+            <div className="space-y-3">
+              {([
+                { key: "matchDuration", label: "対戦時間", min: 1, max: 120 },
+                { key: "recruitmentExpiry", label: "募集期限", min: 1, max: 60 },
+                { key: "callingTimeout", label: "呼び出し猶予", min: 1, max: 30 },
+                { key: "fiveMinWarning", label: "終了前通知", min: 0, max: 120 },
+                { key: "penaltyDuration", label: "ペナルティ", min: 0, max: 60 },
+              ] as const).map((item) => (
+                <div key={item.key} className="flex items-center justify-between gap-4">
+                  <label className="text-sm text-[var(--muted)] shrink-0">{item.label}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={item.min}
+                      max={item.max}
+                      value={timerSettings[item.key]}
+                      onChange={(e) => setTimerSettings(prev => ({ ...prev, [item.key]: Number(e.target.value) }))}
+                      className="w-20 bg-[var(--background)] border border-[var(--card-border)] text-white text-sm py-2 px-3 rounded-lg text-center focus:outline-none focus:border-[var(--accent)]"
+                    />
+                    <span className="text-xs text-[var(--muted)]">分</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={saveTimerSettings} disabled={timerLoading} className="flex-1 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50">
+                {timerLoading ? "保存中..." : "保存"}
+              </button>
+              <button onClick={() => setShowTimerSettings(false)} className="flex-1 bg-[var(--card)] border border-[var(--card-border)] text-white font-semibold py-3 rounded-lg hover:border-[var(--accent)] transition-colors">
                 キャンセル
               </button>
             </div>

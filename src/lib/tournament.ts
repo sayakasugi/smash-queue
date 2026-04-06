@@ -1,5 +1,6 @@
 import { redis } from './redis'
-import type { Tournament, Setup, Recruitment, QueueEntry, Match, Player, Penalty } from './types'
+import type { Tournament, Setup, Recruitment, QueueEntry, Match, Player, Penalty, TimerSettings } from './types'
+import { getTimerMs, DEFAULT_TIMER_SETTINGS } from './types'
 
 // === Helper: parse Redis data (handles both string and object) ===
 
@@ -9,6 +10,20 @@ function parse<T>(data: unknown): T | null {
     try { return JSON.parse(data) } catch { return null }
   }
   return data as T
+}
+
+// === Timer helper ===
+
+async function getTimerForSetup(setupId: string) {
+  const setup = await getSetup(setupId)
+  if (!setup) return getTimerMs()
+  const tournament = await getTournament(setup.tournamentId)
+  return getTimerMs(tournament?.timerSettings)
+}
+
+async function getTimerForTournament(tournamentId: string) {
+  const tournament = await getTournament(tournamentId)
+  return getTimerMs(tournament?.timerSettings)
 }
 
 // === ID Generation ===
@@ -147,6 +162,7 @@ export async function getRecruitment(id: string): Promise<Recruitment | null> {
 }
 
 export async function getSetupRecruitments(setupId: string): Promise<Recruitment[]> {
+  const timer = await getTimerForSetup(setupId)
   const ids = await redis.smembers(`setup:${setupId}:recruitments`)
   const recruitments: Recruitment[] = []
   for (const id of ids) {
@@ -167,7 +183,7 @@ export async function getSetupRecruitments(setupId: string): Promise<Recruitment
     if (i === 0) {
       // First recruitment: activate timer if not set
       if (r.expiresAt === 0) {
-        r.expiresAt = now + 10 * 60 * 1000
+        r.expiresAt = now + timer.recruitmentExpiry
         await redis.set(`recruitment:${r.id}`, JSON.stringify(r))
       }
       // Check expiry
@@ -179,14 +195,13 @@ export async function getSetupRecruitments(setupId: string): Promise<Recruitment
         continue
       }
     }
-    // 2nd+ recruitments: timer stays at 0 (paused)
 
     result.push(r)
   }
 
   // After removing expired first, re-check if new first needs timer
   if (result.length > 0 && result[0].expiresAt === 0) {
-    result[0].expiresAt = now + 10 * 60 * 1000
+    result[0].expiresAt = now + timer.recruitmentExpiry
     await redis.set(`recruitment:${result[0].id}`, JSON.stringify(result[0]))
   }
 
@@ -306,7 +321,7 @@ export async function startNextMatch(setupId: string): Promise<Match | null> {
     player1: entry.player1,
     player2: entry.player2,
     startedAt: now,
-    endsAt: now + 5 * 60 * 1000, // まず呼び出し猶予5分
+    endsAt: now + (await getTimerForSetup(setupId)).callingTimeout,
     status: 'calling',
     player1Ready: false,
     player2Ready: false,
@@ -342,7 +357,7 @@ export async function playerReady(matchId: string, playerId: string): Promise<Ma
     const now = Date.now()
     match.status = 'active'
     match.startedAt = now
-    match.endsAt = now + 30 * 60 * 1000 // 30分
+    match.endsAt = now + (await getTimerForSetup(match.setupId)).matchDuration
 
     const setup = await getSetup(match.setupId)
     if (setup) {
@@ -393,8 +408,10 @@ export async function checkMatchTimeout(setupId: string): Promise<{ expired: boo
     return { expired: true, fiveMinWarning: false }
   }
 
-  // 5 minute warning (between 4:57 and 5:00 remaining to avoid repeat alerts)
-  if (remaining <= 5 * 60 * 1000 && remaining > 5 * 60 * 1000 - 3000) {
+  // Warning before end (between warning-3s and warning to avoid repeat alerts)
+  const tournament = await getTournament(setup.tournamentId)
+  const timer = getTimerMs(tournament?.timerSettings)
+  if (remaining <= timer.fiveMinWarning && remaining > timer.fiveMinWarning - 3000) {
     return { expired: false, fiveMinWarning: true }
   }
 
@@ -456,13 +473,15 @@ export async function forceRemoveFromQueue(setupId: string, entryId: string): Pr
 // === Penalty ===
 
 export async function addPenalty(playerId: string, tournamentId: string): Promise<void> {
+  const timer = await getTimerForTournament(tournamentId)
+  const penaltySec = Math.ceil(timer.penaltyDuration / 1000)
   const penalty: Penalty = {
     playerId,
     tournamentId,
-    until: Date.now() + 10 * 60 * 1000,
+    until: Date.now() + timer.penaltyDuration,
     reason: 'no_show',
   }
-  await redis.set(`penalty:${playerId}:${tournamentId}`, JSON.stringify(penalty), { ex: 600 })
+  await redis.set(`penalty:${playerId}:${tournamentId}`, JSON.stringify(penalty), { ex: penaltySec })
 }
 
 export async function getPlayerPenalty(playerId: string, tournamentId: string): Promise<Penalty | null> {

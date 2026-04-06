@@ -1,5 +1,21 @@
 // === Core Types ===
 
+export type TimerSettings = {
+  matchDuration: number // 対戦時間（分）
+  recruitmentExpiry: number // 募集期限（分）
+  callingTimeout: number // 呼び出し猶予（分）
+  fiveMinWarning: number // 終了前通知（分）
+  penaltyDuration: number // ペナルティ時間（分）
+}
+
+export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
+  matchDuration: 30,
+  recruitmentExpiry: 10,
+  callingTimeout: 5,
+  fiveMinWarning: 5,
+  penaltyDuration: 10,
+}
+
 export type Tournament = {
   id: string
   name: string
@@ -8,6 +24,7 @@ export type Tournament = {
   organizerName: string
   createdAt: number
   status: 'active' | 'archived'
+  timerSettings?: TimerSettings
 }
 
 export type Setup = {
@@ -77,12 +94,14 @@ export type Penalty = {
   reason: 'no_show'
 }
 
-// === Timer Constants ===
-
-export const TIMER = {
-  MATCH_DURATION: 30 * 60 * 1000, // 30分
-  RECRUITMENT_EXPIRY: 10 * 60 * 1000, // 10分
-  CALLING_TIMEOUT: 5 * 60 * 1000, // 5分
-  FIVE_MIN_WARNING: 5 * 60 * 1000, // 終了5分前
-  PENALTY_DURATION: 10 * 60 * 1000, // 10分ペナルティ
-} as const
+// Helper: get timer in ms from tournament settings
+export function getTimerMs(settings?: TimerSettings) {
+  const s = settings || DEFAULT_TIMER_SETTINGS
+  return {
+    matchDuration: s.matchDuration * 60 * 1000,
+    recruitmentExpiry: s.recruitmentExpiry * 60 * 1000,
+    callingTimeout: s.callingTimeout * 60 * 1000,
+    fiveMinWarning: s.fiveMinWarning * 60 * 1000,
+    penaltyDuration: s.penaltyDuration * 60 * 1000,
+  }
+}
