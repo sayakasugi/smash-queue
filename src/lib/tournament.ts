@@ -97,8 +97,9 @@ export async function getSetup(id: string) {
 }
 
 export async function getSetups(tournamentId: string) {
-  const { data } = await supabase.from('setups').select().eq('tournament_id', tournamentId).order('name')
-  return (data || []) as Setup[]
+  const { data } = await supabase.from('setups').select().eq('tournament_id', tournamentId)
+  const setups = (data || []) as Setup[]
+  return setups.sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }))
 }
 
 export async function updateSetup(id: string, updates: Partial<Setup>) {
