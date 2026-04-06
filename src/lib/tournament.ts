@@ -319,6 +319,8 @@ export async function checkCallingTimeout(setupId: string): Promise<{ timedOut: 
   }
 
   await supabase.from('matches').update({ status: 'finished' }).eq('id', match.id)
+  // Remove the queue entry for this timed-out match
+  await supabase.from('queue_entries').update({ status: 'completed' }).eq('setup_id', setupId).eq('player1_id', match.player1_id).eq('player2_id', match.player2_id).in('status', ['calling'])
   await supabase.from('setups').update({ status: 'idle', current_match_id: null }).eq('id', setupId)
   await startNextMatch(setupId)
 
