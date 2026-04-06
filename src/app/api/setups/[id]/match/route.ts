@@ -1,19 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getSetup, getQueue, playerReady, endMatch, forceEndMatch, forceRemoveFromQueue, getTournament, checkCallingTimeout, checkMatchTimeout } from '@/lib/tournament'
+import { getCached, setCache, invalidateCache, CACHE_TTL } from '@/lib/cache'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  // Check calling timeout
+  // Timeout checks always run (side effects)
   const timeoutResult = await checkCallingTimeout(id)
-
-  // Check match timeout (auto-end + 5min warning)
   const matchResult = await checkMatchTimeout(id)
 
-  const setup = await getSetup(id)
-  if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
-  const queue = await getQueue(id)
+  // If timeout happened, invalidate cache
+  if (timeoutResult.timedOut || matchResult.expired) {
+    invalidateCache(`match:${id}`)
+    invalidateCache(`status:`)
+  }
+
+  const cacheKey = `match:${id}`
+  const cached = getCached<{ setup: unknown; queue: unknown }>(cacheKey)
+
+  let setup, queue
+  if (cached && !timeoutResult.timedOut && !matchResult.expired) {
+    setup = cached.setup
+    queue = cached.queue
+  } else {
+    setup = await getSetup(id)
+    if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
+    queue = await getQueue(id)
+    setCache(cacheKey, { setup, queue }, CACHE_TTL.SETUP_DETAIL)
+  }
 
   return NextResponse.json({
     setup,
@@ -30,6 +45,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!user) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
 
   const body = await req.json()
+
+  // Invalidate cache on any mutation
+  invalidateCache(`match:${setupId}`)
+  invalidateCache(`status:`)
 
   if (body.action === 'ready') {
     const match = await playerReady(body.matchId, user.id)

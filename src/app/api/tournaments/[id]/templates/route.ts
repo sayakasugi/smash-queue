@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getTournament, getTemplates, saveTemplates } from '@/lib/tournament'
+import { getCached, setCache, invalidateCache, CACHE_TTL } from '@/lib/cache'
 
-// GET: テンプレート一覧（誰でも取得可）
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const cacheKey = `templates:${id}`
+  const cached = getCached(cacheKey)
+  if (cached) return NextResponse.json(cached)
+
   const templates = await getTemplates(id)
+  setCache(cacheKey, templates, CACHE_TTL.TEMPLATES)
   return NextResponse.json(templates)
 }
 
-// PUT: テンプレート更新（主催者のみ）
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const user = await getSession()
@@ -23,5 +27,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!Array.isArray(templates)) return NextResponse.json({ error: '不正なデータ' }, { status: 400 })
 
   await saveTemplates(id, templates.filter((t: unknown) => typeof t === 'string' && t.trim()))
+  invalidateCache(`templates:${id}`)
   return NextResponse.json({ success: true })
 }

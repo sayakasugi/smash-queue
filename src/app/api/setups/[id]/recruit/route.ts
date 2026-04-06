@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { createRecruitment, getSetupRecruitments, joinRecruitment, cancelRecruitment, getSetup } from '@/lib/tournament'
+import { getCached, setCache, invalidateCache, CACHE_TTL } from '@/lib/cache'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const cacheKey = `recruit:${id}`
+  const cached = getCached(cacheKey)
+  if (cached) return NextResponse.json(cached)
+
   const recruitments = await getSetupRecruitments(id)
+  setCache(cacheKey, recruitments, CACHE_TTL.RECRUITMENTS)
   return NextResponse.json(recruitments)
 }
 
@@ -15,9 +21,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const body = await req.json()
 
+  // Invalidate cache on mutation
+  invalidateCache(`recruit:${setupId}`)
+  invalidateCache(`status:`)
+  invalidateCache(`mystatus:`)
+
   if (body.action === 'join') {
     const entry = await joinRecruitment(body.recruitmentId, user)
     if (!entry) return NextResponse.json({ error: '参加できません' }, { status: 400 })
+    invalidateCache(`match:${setupId}`)
     return NextResponse.json(entry)
   }
 
