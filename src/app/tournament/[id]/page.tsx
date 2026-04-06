@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "../../providers"
+import { ProfilePage } from "@/components/profile-page"
 
 type Tournament = { id: string; name: string; code: string; organizerId: string }
 type Player = { id: string; name: string; xUsername: string }
@@ -13,7 +14,7 @@ type Recruitment = { id: string; setupId: string; creator: Player; template: str
 
 export default function TournamentPage() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [setups, setSetups] = useState<Setup[]>([])
   const [setupRecruitCounts, setSetupRecruitCounts] = useState<Record<string, number>>({})
@@ -29,6 +30,7 @@ export default function TournamentPage() {
   const [templates, setTemplates] = useState<string[]>([])
   const [templateText, setTemplateText] = useState("")
   const [templateLoading, setTemplateLoading] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
   const [showTimerSettings, setShowTimerSettings] = useState(false)
   const [timerSettings, setTimerSettings] = useState({ matchDuration: 30, recruitmentExpiry: 10, callingTimeout: 5, fiveMinWarning: 5, penaltyDuration: 10 })
   const [timerLoading, setTimerLoading] = useState(false)
@@ -213,6 +215,10 @@ export default function TournamentPage() {
     )
   }
 
+  if (showProfile && user) {
+    return <ProfilePage user={user} onClose={() => setShowProfile(false)} onLogout={logout} />
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
@@ -229,6 +235,7 @@ export default function TournamentPage() {
                 <button onClick={openTemplateEditor} className="text-xs text-[var(--accent)] hover:underline">テンプレート</button>
               </>
             )}
+            <button onClick={() => setShowProfile(true)} className="text-xs text-[var(--accent)] hover:underline">@{user?.xUsername}</button>
             <a href="/" className="text-sm text-[var(--muted)] hover:text-white">← 戻る</a>
           </div>
         </div>
