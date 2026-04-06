@@ -147,7 +147,7 @@ export default function Home() {
               autoCorrect="off"
               autoCapitalize="characters"
               spellCheck={false}
-              inputMode="latin"
+              inputMode="text"
               className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white text-center text-2xl font-mono tracking-[0.3em] py-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)] placeholder:text-base placeholder:tracking-normal"
             />
           ) : (
