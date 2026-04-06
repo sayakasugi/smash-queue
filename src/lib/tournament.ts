@@ -1,5 +1,15 @@
 import { redis } from './redis'
-import type { Tournament, Setup, Recruitment, QueueEntry, Match, Player, Penalty, TIMER } from './types'
+import type { Tournament, Setup, Recruitment, QueueEntry, Match, Player, Penalty } from './types'
+
+// === Helper: parse Redis data (handles both string and object) ===
+
+function parse<T>(data: unknown): T | null {
+  if (!data) return null
+  if (typeof data === 'string') {
+    try { return JSON.parse(data) } catch { return null }
+  }
+  return data as T
+}
 
 // === ID Generation ===
 
@@ -33,8 +43,8 @@ export async function createTournament(name: string, organizer: Player): Promise
 }
 
 export async function getTournament(id: string): Promise<Tournament | null> {
-  const data = await redis.get<string>(`tournament:${id}`)
-  return data ? JSON.parse(data) : null
+  const data = await redis.get(`tournament:${id}`)
+  return parse<Tournament>(data)
 }
 
 export async function getTournamentByCode(code: string): Promise<Tournament | null> {
@@ -70,8 +80,8 @@ export async function createSetup(tournamentId: string, name: string): Promise<S
 }
 
 export async function getSetup(id: string): Promise<Setup | null> {
-  const data = await redis.get<string>(`setup:${id}`)
-  return data ? JSON.parse(data) : null
+  const data = await redis.get(`setup:${id}`)
+  return parse<Setup>(data)
 }
 
 export async function getSetups(tournamentId: string): Promise<Setup[]> {
@@ -131,8 +141,8 @@ export async function createRecruitment(
 }
 
 export async function getRecruitment(id: string): Promise<Recruitment | null> {
-  const data = await redis.get<string>(`recruitment:${id}`)
-  return data ? JSON.parse(data) : null
+  const data = await redis.get(`recruitment:${id}`)
+  return parse<Recruitment>(data)
 }
 
 export async function getSetupRecruitments(setupId: string): Promise<Recruitment[]> {
@@ -218,8 +228,9 @@ export async function getQueue(setupId: string): Promise<QueueEntry[]> {
   const ids = await redis.lrange(`setup:${setupId}:queue`, 0, -1)
   const entries: QueueEntry[] = []
   for (const id of ids) {
-    const data = await redis.get<string>(`queue:${id}`)
-    if (data) entries.push(JSON.parse(data))
+    const data = await redis.get(`queue:${id}`)
+    const entry = parse<QueueEntry>(data)
+    if (entry) entries.push(entry)
   }
   return entries
 }
@@ -235,9 +246,9 @@ export async function startNextMatch(setupId: string): Promise<Match | null> {
   const queueId = await redis.lpop(`setup:${setupId}:queue`)
   if (!queueId || typeof queueId !== 'string') return null
 
-  const entryData = await redis.get<string>(`queue:${queueId}`)
-  if (!entryData) return null
-  const entry: QueueEntry = JSON.parse(entryData)
+  const entryData = await redis.get(`queue:${queueId}`)
+  const entry = parse<QueueEntry>(entryData)
+  if (!entry) return null
 
   const id = generateId()
   const now = Date.now()
@@ -271,9 +282,9 @@ export async function startNextMatch(setupId: string): Promise<Match | null> {
 }
 
 export async function playerReady(matchId: string, playerId: string): Promise<Match | null> {
-  const data = await redis.get<string>(`match:${matchId}`)
+  const data = await redis.get(`match:${matchId}`)
   if (!data) return null
-  const match: Match = JSON.parse(data)
+  const match = parse<Match>(data)!
 
   if (match.player1.id === playerId) match.player1Ready = true
   if (match.player2.id === playerId) match.player2Ready = true
@@ -298,9 +309,9 @@ export async function playerReady(matchId: string, playerId: string): Promise<Ma
 }
 
 export async function endMatch(matchId: string): Promise<void> {
-  const data = await redis.get<string>(`match:${matchId}`)
+  const data = await redis.get(`match:${matchId}`)
   if (!data) return
-  const match: Match = JSON.parse(data)
+  const match = parse<Match>(data)!
 
   match.status = 'finished'
   await redis.set(`match:${matchId}`, JSON.stringify(match))
@@ -341,9 +352,9 @@ export async function addPenalty(playerId: string, tournamentId: string): Promis
 }
 
 export async function getPlayerPenalty(playerId: string, tournamentId: string): Promise<Penalty | null> {
-  const data = await redis.get<string>(`penalty:${playerId}:${tournamentId}`)
-  if (!data) return null
-  const penalty: Penalty = JSON.parse(data)
+  const data = await redis.get(`penalty:${playerId}:${tournamentId}`)
+  const penalty = parse<Penalty>(data)
+  if (!penalty) return null
   if (penalty.until < Date.now()) return null
   return penalty
 }
