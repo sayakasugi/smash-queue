@@ -1,37 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { getSetup, getQueue, playerReady, endMatch, forceEndMatch, forceRemoveFromQueue, getTournament, checkCallingTimeout, checkMatchTimeout } from '@/lib/tournament'
-import { getCached, setCache, invalidateCache, CACHE_TTL } from '@/lib/cache'
+import { getSetup, getQueue, getMatch, playerReady, endMatch, forceEndMatch, forceRemoveFromQueue, getTournament, checkCallingTimeout, checkMatchTimeout } from '@/lib/tournament'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  // Timeout checks always run (side effects)
   const timeoutResult = await checkCallingTimeout(id)
   const matchResult = await checkMatchTimeout(id)
 
-  // If timeout happened, invalidate cache
-  if (timeoutResult.timedOut || matchResult.expired) {
-    invalidateCache(`match:${id}`)
-    invalidateCache(`status:`)
+  const setup = await getSetup(id)
+  if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
+
+  // Get current match data
+  let currentMatch = null
+  if (setup.current_match_id) {
+    currentMatch = await getMatch(setup.current_match_id)
   }
 
-  const cacheKey = `match:${id}`
-  const cached = getCached<{ setup: unknown; queue: unknown }>(cacheKey)
-
-  let setup, queue
-  if (cached && !timeoutResult.timedOut && !matchResult.expired) {
-    setup = cached.setup
-    queue = cached.queue
-  } else {
-    setup = await getSetup(id)
-    if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
-    queue = await getQueue(id)
-    setCache(cacheKey, { setup, queue }, CACHE_TTL.SETUP_DETAIL)
-  }
+  const queue = await getQueue(id)
 
   return NextResponse.json({
-    setup,
+    setup: { ...setup, currentMatch: currentMatch },
     queue,
     ...(timeoutResult.timedOut ? { timeout: { penalized: timeoutResult.penalized } } : {}),
     ...(matchResult.expired ? { matchExpired: true } : {}),
@@ -45,10 +34,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!user) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
 
   const body = await req.json()
-
-  // Invalidate cache on any mutation
-  invalidateCache(`match:${setupId}`)
-  invalidateCache(`status:`)
 
   if (body.action === 'ready') {
     const match = await playerReady(body.matchId, user.id)
@@ -64,8 +49,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (body.action === 'force_end') {
     const setup = await getSetup(setupId)
     if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
-    const tournament = await getTournament(setup.tournamentId)
-    if (!tournament || tournament.organizerId !== user.id) return NextResponse.json({ error: '主催者のみ' }, { status: 403 })
+    const tournament = await getTournament(setup.tournament_id)
+    if (!tournament || tournament.organizer_id !== user.id) return NextResponse.json({ error: '主催者のみ' }, { status: 403 })
     await forceEndMatch(setupId)
     return NextResponse.json({ success: true })
   }
@@ -73,8 +58,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (body.action === 'force_remove') {
     const setup = await getSetup(setupId)
     if (!setup) return NextResponse.json({ error: '台が見つかりません' }, { status: 404 })
-    const tournament = await getTournament(setup.tournamentId)
-    if (!tournament || tournament.organizerId !== user.id) return NextResponse.json({ error: '主催者のみ' }, { status: 403 })
+    const tournament = await getTournament(setup.tournament_id)
+    if (!tournament || tournament.organizer_id !== user.id) return NextResponse.json({ error: '主催者のみ' }, { status: 403 })
     await forceRemoveFromQueue(setupId, body.entryId)
     return NextResponse.json({ success: true })
   }

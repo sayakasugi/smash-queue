@@ -5,7 +5,6 @@ import { createTournament, joinTournament, getPlayerTournaments } from '@/lib/to
 export async function GET() {
   const user = await getSession()
   if (!user) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
-
   const tournaments = await getPlayerTournaments(user.id)
   return NextResponse.json(tournaments)
 }

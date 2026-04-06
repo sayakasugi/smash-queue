@@ -1,42 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getSetups, getQueue, getSetupRecruitments } from '@/lib/tournament'
-import { getCached, setCache, CACHE_TTL } from '@/lib/cache'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const user = await getSession()
   if (!user) return NextResponse.json({ hasRecruitment: false, inQueue: false, inMatch: false })
 
-  const cacheKey = `mystatus:${id}:${user.id}`
-  const cached = getCached(cacheKey)
-  if (cached) return NextResponse.json(cached)
-
   const setups = await getSetups(id)
-  let hasRecruitment = false
-  let inQueue = false
-  let inMatch = false
-  let recruitmentSetupName = ""
+  let hasRecruitment = false, inQueue = false, inMatch = false, recruitmentSetupName = ""
 
   for (const setup of setups) {
-    if (setup.currentMatch) {
-      if (setup.currentMatch.player1.id === user.id || setup.currentMatch.player2.id === user.id) {
-        inMatch = true
-      }
+    if (setup.current_match_id) {
+      const { data: match } = await (await import('@/lib/supabase')).supabase.from('matches').select().eq('id', setup.current_match_id).single()
+      if (match && (match.player1_id === user.id || match.player2_id === user.id)) inMatch = true
     }
     const queue = await getQueue(setup.id)
-    if (queue.some(e => e.player1.id === user.id || e.player2.id === user.id)) {
-      inQueue = true
-    }
+    if (queue.some((e: { player1_id: string; player2_id: string }) => e.player1_id === user.id || e.player2_id === user.id)) inQueue = true
     const recruitments = await getSetupRecruitments(setup.id)
-    const myRecruitment = recruitments.find(r => r.creator.id === user.id)
-    if (myRecruitment) {
-      hasRecruitment = true
-      recruitmentSetupName = setup.name
-    }
+    const my = recruitments.find((r: { creator_id: string }) => r.creator_id === user.id)
+    if (my) { hasRecruitment = true; recruitmentSetupName = setup.name }
   }
 
-  const result = { hasRecruitment, inQueue, inMatch, recruitmentSetupName }
-  setCache(cacheKey, result, CACHE_TTL.MY_STATUS)
-  return NextResponse.json(result)
+  return NextResponse.json({ hasRecruitment, inQueue, inMatch, recruitmentSetupName })
 }

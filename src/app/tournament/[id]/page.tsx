@@ -5,12 +5,43 @@ import { useParams } from "next/navigation"
 import { useAuth } from "../../providers"
 import { ProfilePage } from "@/components/profile-page"
 
-type Tournament = { id: string; name: string; code: string; organizerId: string }
+type Tournament = { id: string; name: string; code: string; organizer_id: string }
 type Player = { id: string; name: string; xUsername: string }
-type Setup = { id: string; name: string; status: string; currentMatch: Match | null; tournamentId: string }
-type Match = { id: string; setupId: string; player1: Player; player2: Player; startedAt: number; endsAt: number; status: string; player1Ready: boolean; player2Ready: boolean }
-type QueueEntry = { id: string; player1: Player; player2: Player; position: number; status: string }
-type Recruitment = { id: string; setupId: string; creator: Player; template: string; description: string; expiresAt: number; status: string }
+type Setup = { id: string; name: string; status: string; currentMatch: Match | null; tournament_id: string }
+type Match = {
+  id: string; setup_id: string;
+  player1_id: string; player1_name: string; player1_x: string;
+  player2_id: string; player2_name: string; player2_x: string;
+  started_at: string; ends_at: string; status: string;
+  player1_ready: boolean; player2_ready: boolean;
+}
+type QueueEntry = {
+  id: string;
+  player1_id: string; player1_name: string; player1_x: string;
+  player2_id: string; player2_name: string; player2_x: string;
+  position: number; status: string;
+}
+type Recruitment = {
+  id: string; setup_id: string;
+  creator_id: string; creator_name: string; creator_x: string;
+  template: string; description: string; expires_at: string | null; status: string;
+}
+
+function matchPlayer1(m: Match): Player {
+  return { id: m.player1_id, name: m.player1_name, xUsername: m.player1_x }
+}
+function matchPlayer2(m: Match): Player {
+  return { id: m.player2_id, name: m.player2_name, xUsername: m.player2_x }
+}
+function queuePlayer1(e: QueueEntry): Player {
+  return { id: e.player1_id, name: e.player1_name, xUsername: e.player1_x }
+}
+function queuePlayer2(e: QueueEntry): Player {
+  return { id: e.player2_id, name: e.player2_name, xUsername: e.player2_x }
+}
+function recruitmentCreator(r: Recruitment): Player {
+  return { id: r.creator_id, name: r.creator_name, xUsername: r.creator_x }
+}
 
 export default function TournamentPage() {
   const { id } = useParams<{ id: string }>()
@@ -37,7 +68,7 @@ export default function TournamentPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const xId = user?.id || ""
-  const isOrganizer = tournament?.organizerId === xId
+  const isOrganizer = tournament?.organizer_id === xId
 
   // Fetch tournament
   useEffect(() => {
@@ -303,7 +334,9 @@ export default function TournamentPage() {
             {setups.length === 0 ? (
               <p className="text-sm text-[var(--muted)]">台がまだありません</p>
             ) : (
-              setups.map((setup) => (
+              setups.map((setup) => {
+                const currentMatch = setup.currentMatch
+                return (
                 <button
                   key={setup.id}
                   onClick={() => bulkMode ? toggleSelectSetup(setup.id) : setSelectedSetup(setup.id)}
@@ -333,9 +366,9 @@ export default function TournamentPage() {
                       {setup.status === "disabled" ? "使用不可" : setup.status === "idle" ? "空き" : setup.status === "calling" ? "呼出中" : "使用中"}
                     </span>
                   </div>
-                  {setup.currentMatch && (
+                  {currentMatch && (
                     <p className="text-xs text-[var(--muted)] mt-2">
-                      {setup.currentMatch.player1.name} vs {setup.currentMatch.player2.name}
+                      {currentMatch.player1_name} vs {currentMatch.player2_name}
                     </p>
                   )}
                   {(setupRecruitCounts[setup.id] || 0) > 0 && (
@@ -358,7 +391,8 @@ export default function TournamentPage() {
                     </div>
                   )}
                 </button>
-              ))
+                )
+              })
             )}
           </div>
 
@@ -490,10 +524,10 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
     if (statusRes.ok) setMyStatus(await statusRes.json())
     if (matchRes.ok) {
       const data = await matchRes.json()
+      const currentMatch: Match | null = data.setup?.currentMatch || null
       // Notify if calling and involves this player
-      if (data.setup?.currentMatch?.status === "calling" && prevStatusRef.current !== "calling") {
-        const m = data.setup.currentMatch
-        if (m.player1.id === xId || m.player2.id === xId) {
+      if (currentMatch?.status === "calling" && prevStatusRef.current !== "calling") {
+        if (currentMatch.player1_id === xId || currentMatch.player2_id === xId) {
           playSound()
           if (document.hidden) document.title = "🔔 順番が来ました！ - SmashQueue"
         }
@@ -504,8 +538,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       }
       // 5 minute warning
       if (data.fiveMinWarning) {
-        const m = data.setup?.currentMatch
-        if (m && (m.player1.id === xId || m.player2.id === xId)) {
+        if (currentMatch && (currentMatch.player1_id === xId || currentMatch.player2_id === xId)) {
           playSound()
           if (document.hidden) document.title = "⚠️ 残り5分！ - SmashQueue"
           alert("対戦終了まで残り5分です")
@@ -513,13 +546,12 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       }
       // Match expired
       if (data.matchExpired) {
-        const m = data.setup?.currentMatch
-        if (m && (m.player1.id === xId || m.player2.id === xId)) {
+        if (currentMatch && (currentMatch.player1_id === xId || currentMatch.player2_id === xId)) {
           playSound()
           alert("対戦時間が終了しました")
         }
       }
-      prevStatusRef.current = data.setup?.currentMatch?.status || ""
+      prevStatusRef.current = currentMatch?.status || ""
       setSetup(data.setup)
       setQueue(data.queue)
     }
@@ -636,10 +668,10 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   if (!setup) return <div className="animate-pulse text-[var(--muted)]">読み込み中...</div>
 
   const match = setup.currentMatch
-  const isInMatch = match && (match.player1.id === xId || match.player2.id === xId)
-  const isPlayer1 = match?.player1.id === xId
-  const myReady = isPlayer1 ? match?.player1Ready : match?.player2Ready
-  const isInQueue = queue.some((e) => e.player1.id === xId || e.player2.id === xId)
+  const isInMatch = match && (match.player1_id === xId || match.player2_id === xId)
+  const isPlayer1 = match?.player1_id === xId
+  const myReady = isPlayer1 ? match?.player1_ready : match?.player2_ready
+  const isInQueue = queue.some((e) => e.player1_id === xId || e.player2_id === xId)
   const isDisabled = setup.status === "disabled"
   const isBusy = isInMatch || isInQueue || isDisabled || myStatus.hasRecruitment || myStatus.inQueue || myStatus.inMatch
 
@@ -673,12 +705,12 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
             <p className="text-sm font-semibold">
               {match.status === "calling" ? "🔔 呼び出し中" : "🎮 対戦中"}
             </p>
-            <Timer endsAt={match.endsAt} />
+            <Timer endsAt={new Date(match.ends_at).getTime()} />
           </div>
           <div className="flex items-center justify-center gap-4 text-lg font-bold">
-            <XLink player={match.player1} />
+            <XLink player={matchPlayer1(match)} />
             <span className="text-[var(--muted)]">vs</span>
-            <XLink player={match.player2} />
+            <XLink player={matchPlayer2(match)} />
           </div>
 
           {/* Ready button */}
@@ -700,7 +732,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
             <div className="mt-4 text-center text-sm text-[var(--muted)]">
               <p>両プレイヤーの着席を待っています...</p>
               <p className="text-xs mt-1">
-                {match.player1.name}: {match.player1Ready ? "✅ 準備完了" : "⏳ 待機中"} / {match.player2.name}: {match.player2Ready ? "✅ 準備完了" : "⏳ 待機中"}
+                {match.player1_name}: {match.player1_ready ? "✅ 準備完了" : "⏳ 待機中"} / {match.player2_name}: {match.player2_ready ? "✅ 準備完了" : "⏳ 待機中"}
               </p>
             </div>
           )}
@@ -740,7 +772,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
               <div key={entry.id} className="flex items-center justify-between bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-3">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-[var(--accent)] w-6">{i + 1}</span>
-                  <span className="text-sm"><XLink player={entry.player1} /> vs <XLink player={entry.player2} /></span>
+                  <span className="text-sm"><XLink player={queuePlayer1(entry)} /> vs <XLink player={queuePlayer2(entry)} /></span>
                 </div>
                 {isOrganizer && (
                   <button onClick={() => forceRemove(entry.id)} className="text-xs text-[var(--danger)] hover:underline">削除</button>
@@ -758,16 +790,18 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
           <p className="text-sm text-[var(--muted)]">募集はありません</p>
         ) : (
           <div className="space-y-2">
-            {recruitments.map((r) => (
+            {recruitments.map((r) => {
+              const creator = recruitmentCreator(r)
+              return (
               <div key={r.id} className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <XLink player={r.creator} />
-                  <RecruitmentTimer expiresAt={r.expiresAt} />
+                  <XLink player={creator} />
+                  <RecruitmentTimer expiresAt={r.expires_at ? new Date(r.expires_at).getTime() : 0} />
                 </div>
                 {r.template && <p className="text-sm text-[var(--accent)] mb-1">{r.template}</p>}
                 {r.description && <p className="text-sm text-[var(--muted)]">{r.description}</p>}
                 <div className="mt-3 flex gap-2">
-                  {r.creator.id !== xId ? (
+                  {creator.id !== xId ? (
                     isBusy ? (
                       <span className="text-xs text-[var(--muted)]">
                         {myStatus.hasRecruitment ? "募集中は他の募集に参加できません" : "参加できません"}
@@ -791,7 +825,8 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

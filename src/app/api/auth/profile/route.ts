@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, getUserProfile, updateUserProfile } from '@/lib/auth'
+import { getSession, getUserProfile, updateUserProfile, setSession } from '@/lib/auth'
 
-// GET: プロフィール取得
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
@@ -10,15 +9,14 @@ export async function GET() {
   if (!profile) return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
 
   return NextResponse.json({
-    xUsername: profile.xUsername,
+    xUsername: profile.x_username,
     name: profile.name,
-    createdAt: profile.createdAt,
-    matchCount: profile.matchCount,
-    tournamentCount: profile.tournamentCount,
+    createdAt: profile.created_at,
+    matchCount: profile.match_count,
+    tournamentCount: profile.tournament_count,
   })
 }
 
-// PUT: プロフィール更新
 export async function PUT(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
@@ -27,10 +25,8 @@ export async function PUT(req: NextRequest) {
   const profile = await updateUserProfile(session.id, { name, password })
   if (!profile) return NextResponse.json({ error: '更新に失敗しました' }, { status: 500 })
 
-  // Update session with new name
   if (name) {
-    const { setSession } = await import('@/lib/auth')
-    await setSession({ id: profile.id, name: profile.name, xUsername: profile.xUsername })
+    await setSession({ id: profile.id, name: profile.name, xUsername: profile.x_username })
   }
 
   return NextResponse.json({ success: true })

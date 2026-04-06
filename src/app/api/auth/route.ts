@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     if (!profile) {
       return NextResponse.json({ error: 'このX IDは既に登録されています' }, { status: 409 })
     }
-    const user = { id: profile.id, name: profile.name, xUsername: profile.xUsername }
+    const user = { id: profile.id, name: profile.name, xUsername: profile.x_username }
     await setSession(user)
     return NextResponse.json({ user })
   }
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'X IDまたはパスワードが正しくありません' }, { status: 401 })
   }
 
-  const user = { id: profile.id, name: profile.name, xUsername: profile.xUsername }
+  const user = { id: profile.id, name: profile.name, xUsername: profile.x_username }
   await setSession(user)
   return NextResponse.json({ user })
 }

@@ -1,32 +1,17 @@
-import { redis } from './redis'
-import type { Tournament, Setup, Recruitment, QueueEntry, Match, Player, Penalty, TimerSettings } from './types'
+import { supabase } from './supabase'
+import type { TimerSettings } from './types'
 import { getTimerMs, DEFAULT_TIMER_SETTINGS } from './types'
 
-// === Helper: parse Redis data (handles both string and object) ===
+// === Types (DB row shapes) ===
 
-function parse<T>(data: unknown): T | null {
-  if (!data) return null
-  if (typeof data === 'string') {
-    try { return JSON.parse(data) } catch { return null }
-  }
-  return data as T
-}
+export type Player = { id: string; name: string; xUsername: string }
+export type Setup = { id: string; tournament_id: string; name: string; status: string; current_match_id: string | null }
+export type Match = { id: string; setup_id: string; tournament_id: string; player1_id: string; player1_name: string; player1_x: string; player2_id: string; player2_name: string; player2_x: string; player1_ready: boolean; player2_ready: boolean; status: string; started_at: string; ends_at: string }
+export type QueueEntry = { id: string; setup_id: string; tournament_id: string; player1_id: string; player1_name: string; player1_x: string; player2_id: string; player2_name: string; player2_x: string; position: number; status: string; recruitment_id: string | null }
+export type Recruitment = { id: string; setup_id: string; tournament_id: string; creator_id: string; creator_name: string; creator_x: string; template: string; description: string; status: string; expires_at: string | null; created_at: string }
+export type Tournament = { id: string; name: string; code: string; organizer_id: string; organizer_name: string; status: string; match_duration: number; recruitment_expiry: number; calling_timeout: number; five_min_warning: number; penalty_duration: number; created_at: string }
 
-// === Timer helper ===
-
-async function getTimerForSetup(setupId: string) {
-  const setup = await getSetup(setupId)
-  if (!setup) return getTimerMs()
-  const tournament = await getTournament(setup.tournamentId)
-  return getTimerMs(tournament?.timerSettings)
-}
-
-async function getTimerForTournament(tournamentId: string) {
-  const tournament = await getTournament(tournamentId)
-  return getTimerMs(tournament?.timerSettings)
-}
-
-// === ID Generation ===
+// === Helpers ===
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
@@ -36,381 +21,301 @@ function generateCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase()
 }
 
-// === Tournament CRUD ===
+function getTimer(t?: Tournament | null) {
+  if (!t) return getTimerMs()
+  return getTimerMs({ matchDuration: t.match_duration, recruitmentExpiry: t.recruitment_expiry, callingTimeout: t.calling_timeout, fiveMinWarning: t.five_min_warning, penaltyDuration: t.penalty_duration })
+}
 
-export async function createTournament(name: string, organizer: Player): Promise<Tournament> {
+// === Tournament ===
+
+export async function createTournament(name: string, organizer: Player) {
   const id = generateId()
   const code = generateCode()
-  const tournament: Tournament = {
-    id,
-    name,
-    code,
-    organizerId: organizer.id,
-    organizerName: organizer.name,
-    createdAt: Date.now(),
-    status: 'active',
-  }
-  await redis.set(`tournament:${id}`, JSON.stringify(tournament))
-  await redis.set(`tournament:code:${code}`, id)
-  // Add to organizer's tournaments
-  await redis.sadd(`player:${organizer.id}:tournaments`, id)
-  return tournament
+  const { data, error } = await supabase.from('tournaments').insert({
+    id, name, code, organizer_id: organizer.id, organizer_name: organizer.name, status: 'active',
+  }).select().single()
+  if (error) throw error
+
+  await supabase.from('tournament_participants').insert({ tournament_id: id, user_id: organizer.id })
+  return data
 }
 
-export async function getTournament(id: string): Promise<Tournament | null> {
-  const data = await redis.get(`tournament:${id}`)
-  return parse<Tournament>(data)
+export async function getTournament(id: string) {
+  const { data } = await supabase.from('tournaments').select().eq('id', id).single()
+  return data as Tournament | null
 }
 
-export async function getTournamentByCode(code: string): Promise<Tournament | null> {
-  const id = await redis.get<string>(`tournament:code:${code}`)
-  if (!id) return null
-  return getTournament(id)
+export async function getTournamentByCode(code: string) {
+  const { data } = await supabase.from('tournaments').select().eq('code', code).single()
+  return data as Tournament | null
 }
 
-export async function joinTournament(code: string, player: Player): Promise<Tournament | null> {
+export async function joinTournament(code: string, player: Player) {
   const tournament = await getTournamentByCode(code)
   if (!tournament || tournament.status !== 'active') return null
-  await redis.sadd(`tournament:${tournament.id}:participants`, player.id)
-  await redis.set(`player:${player.id}`, JSON.stringify(player))
-  await redis.sadd(`player:${player.id}:tournaments`, tournament.id)
+  await supabase.from('tournament_participants').upsert({ tournament_id: tournament.id, user_id: player.id })
   return tournament
 }
 
-// === Setup CRUD ===
+export async function getPlayerTournaments(playerId: string) {
+  const { data } = await supabase.from('tournament_participants').select('tournament_id').eq('user_id', playerId)
+  if (!data || data.length === 0) return []
+  const ids = data.map(d => d.tournament_id)
+  const { data: tournaments } = await supabase.from('tournaments').select().in('id', ids).order('created_at', { ascending: false })
+  return tournaments || []
+}
 
-export async function createSetup(tournamentId: string, name: string): Promise<Setup> {
+// === Setup ===
+
+export async function createSetup(tournamentId: string, name: string) {
   const id = generateId()
-  const setup: Setup = {
-    id,
-    tournamentId,
-    name,
-    status: 'idle',
-    currentMatch: null,
-    queue: [],
-  }
-  await redis.set(`setup:${id}`, JSON.stringify(setup))
-  await redis.sadd(`tournament:${tournamentId}:setups`, id)
-  return setup
+  const { data, error } = await supabase.from('setups').insert({ id, tournament_id: tournamentId, name, status: 'idle' }).select().single()
+  if (error) throw error
+  return data
 }
 
-export async function getSetup(id: string): Promise<Setup | null> {
-  const data = await redis.get(`setup:${id}`)
-  return parse<Setup>(data)
+export async function getSetup(id: string) {
+  const { data } = await supabase.from('setups').select().eq('id', id).single()
+  return data as Setup | null
 }
 
-export async function getSetups(tournamentId: string): Promise<Setup[]> {
-  const ids = await redis.smembers(`tournament:${tournamentId}:setups`)
-  const setups: Setup[] = []
-  for (const id of ids) {
-    const setup = await getSetup(id)
-    if (setup) setups.push(setup)
-  }
-  // Sort by name (natural sort for numbers)
-  return setups.sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }))
+export async function getSetups(tournamentId: string) {
+  const { data } = await supabase.from('setups').select().eq('tournament_id', tournamentId).order('name')
+  return (data || []) as Setup[]
 }
 
-export async function updateSetup(setup: Setup): Promise<void> {
-  await redis.set(`setup:${setup.id}`, JSON.stringify(setup))
+export async function updateSetup(id: string, updates: Partial<Setup>) {
+  await supabase.from('setups').update(updates).eq('id', id)
 }
 
-export async function deleteSetup(id: string, tournamentId: string): Promise<void> {
-  await redis.del(`setup:${id}`)
-  await redis.srem(`tournament:${tournamentId}:setups`, id)
+export async function deleteSetup(id: string) {
+  await supabase.from('setups').delete().eq('id', id)
 }
 
 // === Recruitment ===
 
-export async function createRecruitment(
-  setupId: string,
-  tournamentId: string,
-  creator: Player,
-  template: string,
-  description: string,
-): Promise<Recruitment | null> {
-  // Check if player already has an active recruitment
-  const existing = await getPlayerActiveRecruitment(creator.id, tournamentId)
-  if (existing) return null
+export async function createRecruitment(setupId: string, tournamentId: string, creator: Player, template: string, description: string) {
+  // Check active recruitment
+  const { data: existing } = await supabase.from('recruitments').select().eq('creator_id', creator.id).eq('tournament_id', tournamentId).eq('status', 'open')
+  if (existing && existing.length > 0) return null
 
   // Check penalty
   const penalty = await getPlayerPenalty(creator.id, tournamentId)
   if (penalty) return null
 
   const id = generateId()
-  const now = Date.now()
-  const recruitment: Recruitment = {
-    id,
-    setupId,
-    tournamentId,
-    creator,
-    description,
-    template,
-    createdAt: now,
-    expiresAt: 0, // Set when this becomes the first recruitment
-    status: 'open',
-    joinedBy: null,
-  }
-  await redis.set(`recruitment:${id}`, JSON.stringify(recruitment))
-  await redis.sadd(`setup:${setupId}:recruitments`, id)
-  await redis.set(`player:${creator.id}:active_recruitment:${tournamentId}`, id)
-  return recruitment
+  const { data, error } = await supabase.from('recruitments').insert({
+    id, setup_id: setupId, tournament_id: tournamentId, creator_id: creator.id, creator_name: creator.name, creator_x: creator.xUsername,
+    template, description, status: 'open', expires_at: null, // set when becomes first
+  }).select().single()
+  if (error) throw error
+  return data
 }
 
-export async function getRecruitment(id: string): Promise<Recruitment | null> {
-  const data = await redis.get(`recruitment:${id}`)
-  return parse<Recruitment>(data)
-}
+export async function getSetupRecruitments(setupId: string) {
+  const { data } = await supabase.from('recruitments').select().eq('setup_id', setupId).eq('status', 'open').order('created_at', { ascending: true })
+  if (!data || data.length === 0) return []
 
-export async function getSetupRecruitments(setupId: string): Promise<Recruitment[]> {
-  const timer = await getTimerForSetup(setupId)
-  const ids = await redis.smembers(`setup:${setupId}:recruitments`)
-  const recruitments: Recruitment[] = []
-  for (const id of ids) {
-    const r = await getRecruitment(id)
-    if (!r || r.status !== 'open') continue
-    recruitments.push(r)
-  }
-
-  // Sort by creation time
-  recruitments.sort((a, b) => a.createdAt - b.createdAt)
-
-  const now = Date.now()
+  const now = new Date()
   const result: Recruitment[] = []
 
-  for (let i = 0; i < recruitments.length; i++) {
-    const r = recruitments[i]
+  // Get tournament for timer settings
+  const setup = await getSetup(setupId)
+  const tournament = setup ? await getTournament(setup.tournament_id) : null
+  const timer = getTimer(tournament)
+
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i] as Recruitment
 
     if (i === 0) {
-      // First recruitment: activate timer if not set
-      if (r.expiresAt === 0) {
-        r.expiresAt = now + timer.recruitmentExpiry
-        await redis.set(`recruitment:${r.id}`, JSON.stringify(r))
+      // First: activate timer if not set
+      if (!r.expires_at) {
+        const expiresAt = new Date(now.getTime() + timer.recruitmentExpiry).toISOString()
+        await supabase.from('recruitments').update({ expires_at: expiresAt }).eq('id', r.id)
+        r.expires_at = expiresAt
       }
       // Check expiry
-      if (r.expiresAt <= now) {
-        r.status = 'expired'
-        await redis.set(`recruitment:${r.id}`, JSON.stringify(r))
-        await redis.srem(`setup:${setupId}:recruitments`, r.id)
-        await redis.del(`player:${r.creator.id}:active_recruitment:${r.tournamentId}`)
+      if (new Date(r.expires_at) <= now) {
+        await supabase.from('recruitments').update({ status: 'expired' }).eq('id', r.id)
         continue
       }
     }
-
     result.push(r)
   }
 
-  // After removing expired first, re-check if new first needs timer
-  if (result.length > 0 && result[0].expiresAt === 0) {
-    result[0].expiresAt = now + timer.recruitmentExpiry
-    await redis.set(`recruitment:${result[0].id}`, JSON.stringify(result[0]))
+  // If first was expired, activate next
+  if (result.length > 0 && !result[0].expires_at) {
+    const expiresAt = new Date(now.getTime() + timer.recruitmentExpiry).toISOString()
+    await supabase.from('recruitments').update({ expires_at: expiresAt }).eq('id', result[0].id)
+    result[0].expires_at = expiresAt
   }
 
   return result
 }
 
-export async function joinRecruitment(recruitmentId: string, player: Player): Promise<QueueEntry | null> {
-  const recruitment = await getRecruitment(recruitmentId)
-  if (!recruitment || recruitment.status !== 'open') return null
-  if (recruitment.creator.id === player.id) return null
+export async function joinRecruitment(recruitmentId: string, player: Player) {
+  const { data: r } = await supabase.from('recruitments').select().eq('id', recruitmentId).single()
+  if (!r || r.status !== 'open' || r.creator_id === player.id) return null
 
-  // Check penalty
-  const penalty = await getPlayerPenalty(player.id, recruitment.tournamentId)
+  const penalty = await getPlayerPenalty(player.id, r.tournament_id)
   if (penalty) return null
 
-  // Update recruitment
-  recruitment.status = 'matched'
-  recruitment.joinedBy = player
-  await redis.set(`recruitment:${recruitmentId}`, JSON.stringify(recruitment))
-
-  // Remove from active recruitments
-  await redis.del(`player:${recruitment.creator.id}:active_recruitment:${recruitment.tournamentId}`)
+  await supabase.from('recruitments').update({ status: 'matched' }).eq('id', recruitmentId)
 
   // Add to queue
-  const entry = await addToQueue(recruitment.setupId, recruitment.creator, player, recruitmentId)
+  const entry = await addToQueue(r.setup_id, r.tournament_id, { id: r.creator_id, name: r.creator_name, xUsername: r.creator_x }, player, recruitmentId)
   return entry
 }
 
-export async function cancelRecruitment(recruitmentId: string, playerId: string): Promise<boolean> {
-  const recruitment = await getRecruitment(recruitmentId)
-  if (!recruitment || recruitment.status !== 'open') return false
-  if (recruitment.creator.id !== playerId) return false
-
-  recruitment.status = 'cancelled'
-  await redis.set(`recruitment:${recruitmentId}`, JSON.stringify(recruitment))
-  await redis.srem(`setup:${recruitment.setupId}:recruitments`, recruitmentId)
-  await redis.del(`player:${playerId}:active_recruitment:${recruitment.tournamentId}`)
+export async function cancelRecruitment(recruitmentId: string, playerId: string) {
+  const { data: r } = await supabase.from('recruitments').select().eq('id', recruitmentId).single()
+  if (!r || r.status !== 'open' || r.creator_id !== playerId) return false
+  await supabase.from('recruitments').update({ status: 'cancelled' }).eq('id', recruitmentId)
   return true
-}
-
-async function getPlayerActiveRecruitment(playerId: string, tournamentId: string): Promise<Recruitment | null> {
-  const id = await redis.get<string>(`player:${playerId}:active_recruitment:${tournamentId}`)
-  if (!id) return null
-  const r = await getRecruitment(id)
-  if (!r || r.status !== 'open') {
-    await redis.del(`player:${playerId}:active_recruitment:${tournamentId}`)
-    return null
-  }
-  if (r.expiresAt <= Date.now()) {
-    r.status = 'expired'
-    await redis.set(`recruitment:${id}`, JSON.stringify(r))
-    await redis.srem(`setup:${r.setupId}:recruitments`, id)
-    await redis.del(`player:${playerId}:active_recruitment:${tournamentId}`)
-    return null
-  }
-  return r
 }
 
 // === Queue ===
 
-async function addToQueue(setupId: string, player1: Player, player2: Player, recruitmentId: string): Promise<QueueEntry> {
+async function addToQueue(setupId: string, tournamentId: string, player1: Player, player2: Player, recruitmentId: string) {
+  const { count } = await supabase.from('queue_entries').select('*', { count: 'exact', head: true }).eq('setup_id', setupId).in('status', ['waiting', 'calling'])
   const id = generateId()
-  const queueLength = await redis.llen(`setup:${setupId}:queue`)
-  const entry: QueueEntry = {
-    id,
-    setupId,
-    player1,
-    player2,
-    recruitmentId,
-    position: queueLength,
-    createdAt: Date.now(),
-    status: 'waiting',
-  }
-  await redis.set(`queue:${id}`, JSON.stringify(entry))
-  await redis.rpush(`setup:${setupId}:queue`, id)
+  const { data, error } = await supabase.from('queue_entries').insert({
+    id, setup_id: setupId, tournament_id: tournamentId,
+    player1_id: player1.id, player1_name: player1.name, player1_x: player1.xUsername,
+    player2_id: player2.id, player2_name: player2.name, player2_x: player2.xUsername,
+    recruitment_id: recruitmentId, position: count || 0, status: 'waiting',
+  }).select().single()
+  if (error) throw error
 
-  // If setup is idle, start the match immediately
+  // If setup is idle, start next match
   const setup = await getSetup(setupId)
   if (setup && setup.status === 'idle') {
     await startNextMatch(setupId)
   }
 
-  return entry
+  return data
 }
 
-export async function getQueue(setupId: string): Promise<QueueEntry[]> {
-  const ids = await redis.lrange(`setup:${setupId}:queue`, 0, -1)
-  const entries: QueueEntry[] = []
-  for (const id of ids) {
-    const data = await redis.get(`queue:${id}`)
-    const entry = parse<QueueEntry>(data)
-    if (entry) entries.push(entry)
-  }
-  return entries
-}
-
-export async function removeFromQueue(setupId: string, entryId: string): Promise<void> {
-  await redis.lrem(`setup:${setupId}:queue`, 0, entryId)
-  await redis.del(`queue:${entryId}`)
+export async function getQueue(setupId: string) {
+  const { data } = await supabase.from('queue_entries').select().eq('setup_id', setupId).in('status', ['waiting', 'calling']).order('position')
+  return data || []
 }
 
 // === Match ===
 
-export async function startNextMatch(setupId: string): Promise<Match | null> {
-  const queueId = await redis.lpop(`setup:${setupId}:queue`)
-  if (!queueId || typeof queueId !== 'string') return null
+export async function startNextMatch(setupId: string) {
+  const { data: entries } = await supabase.from('queue_entries').select().eq('setup_id', setupId).eq('status', 'waiting').order('position').limit(1)
+  if (!entries || entries.length === 0) return null
 
-  const entryData = await redis.get(`queue:${queueId}`)
-  const entry = parse<QueueEntry>(entryData)
-  if (!entry) return null
+  const entry = entries[0]
+  const setup = await getSetup(setupId)
+  const tournament = setup ? await getTournament(setup.tournament_id) : null
+  const timer = getTimer(tournament)
 
   const id = generateId()
-  const now = Date.now()
-  const match: Match = {
-    id,
-    setupId,
-    player1: entry.player1,
-    player2: entry.player2,
-    startedAt: now,
-    endsAt: now + (await getTimerForSetup(setupId)).callingTimeout,
-    status: 'calling',
-    player1Ready: false,
-    player2Ready: false,
+  const now = new Date()
+  const endsAt = new Date(now.getTime() + timer.callingTimeout).toISOString()
+
+  await supabase.from('matches').insert({
+    id, setup_id: setupId, tournament_id: entry.tournament_id,
+    player1_id: entry.player1_id, player1_name: entry.player1_name, player1_x: entry.player1_x,
+    player2_id: entry.player2_id, player2_name: entry.player2_name, player2_x: entry.player2_x,
+    status: 'calling', ends_at: endsAt,
+  })
+
+  await supabase.from('setups').update({ status: 'calling', current_match_id: id }).eq('id', setupId)
+  await supabase.from('queue_entries').update({ status: 'calling' }).eq('id', entry.id)
+
+  return id
+}
+
+export async function getMatch(id: string) {
+  const { data } = await supabase.from('matches').select().eq('id', id).single()
+  return data as Match | null
+}
+
+export async function playerReady(matchId: string, playerId: string) {
+  const match = await getMatch(matchId)
+  if (!match) return null
+
+  const updates: Partial<Match> = {}
+  if (match.player1_id === playerId) updates.player1_ready = true
+  if (match.player2_id === playerId) updates.player2_ready = true
+
+  const p1Ready = match.player1_id === playerId ? true : match.player1_ready
+  const p2Ready = match.player2_id === playerId ? true : match.player2_ready
+
+  if (p1Ready && p2Ready) {
+    const setup = await getSetup(match.setup_id)
+    const tournament = setup ? await getTournament(setup.tournament_id) : null
+    const timer = getTimer(tournament)
+    const now = new Date()
+
+    updates.status = 'active'
+    updates.started_at = now.toISOString()
+    updates.ends_at = new Date(now.getTime() + timer.matchDuration).toISOString()
+
+    await supabase.from('setups').update({ status: 'in_use' }).eq('id', match.setup_id)
   }
 
-  await redis.set(`match:${id}`, JSON.stringify(match))
+  await supabase.from('matches').update(updates).eq('id', matchId)
+  return { ...match, ...updates }
+}
 
-  // Update setup
+export async function endMatch(matchId: string) {
+  const match = await getMatch(matchId)
+  if (!match) return
+
+  await supabase.from('matches').update({ status: 'finished' }).eq('id', matchId)
+  await supabase.from('setups').update({ status: 'idle', current_match_id: null }).eq('id', match.setup_id)
+  await startNextMatch(match.setup_id)
+}
+
+// === Timeout checks ===
+
+export async function checkCallingTimeout(setupId: string): Promise<{ timedOut: boolean; penalized: string[] }> {
   const setup = await getSetup(setupId)
-  if (setup) {
-    setup.status = 'calling'
-    setup.currentMatch = match
-    await updateSetup(setup)
+  if (!setup || !setup.current_match_id || setup.status !== 'calling') return { timedOut: false, penalized: [] }
+
+  const match = await getMatch(setup.current_match_id)
+  if (!match || match.status !== 'calling') return { timedOut: false, penalized: [] }
+
+  if (new Date(match.ends_at) > new Date()) return { timedOut: false, penalized: [] }
+
+  const penalized: string[] = []
+  if (!match.player1_ready) {
+    await addPenalty(match.player1_id, match.tournament_id)
+    penalized.push(match.player1_name)
+  }
+  if (!match.player2_ready) {
+    await addPenalty(match.player2_id, match.tournament_id)
+    penalized.push(match.player2_name)
   }
 
-  // Update queue entry
-  entry.status = 'calling'
-  await redis.set(`queue:${queueId}`, JSON.stringify(entry))
+  await supabase.from('matches').update({ status: 'finished' }).eq('id', match.id)
+  await supabase.from('setups').update({ status: 'idle', current_match_id: null }).eq('id', setupId)
+  await startNextMatch(setupId)
 
-  return match
+  return { timedOut: true, penalized }
 }
-
-export async function playerReady(matchId: string, playerId: string): Promise<Match | null> {
-  const data = await redis.get(`match:${matchId}`)
-  if (!data) return null
-  const match = parse<Match>(data)!
-
-  if (match.player1.id === playerId) match.player1Ready = true
-  if (match.player2.id === playerId) match.player2Ready = true
-
-  // Both ready → start match
-  if (match.player1Ready && match.player2Ready) {
-    const now = Date.now()
-    match.status = 'active'
-    match.startedAt = now
-    match.endsAt = now + (await getTimerForSetup(match.setupId)).matchDuration
-
-    const setup = await getSetup(match.setupId)
-    if (setup) {
-      setup.status = 'in_use'
-      setup.currentMatch = match
-      await updateSetup(setup)
-    }
-  }
-
-  await redis.set(`match:${matchId}`, JSON.stringify(match))
-  return match
-}
-
-export async function endMatch(matchId: string): Promise<void> {
-  const data = await redis.get(`match:${matchId}`)
-  if (!data) return
-  const match = parse<Match>(data)!
-
-  match.status = 'finished'
-  await redis.set(`match:${matchId}`, JSON.stringify(match))
-
-  const setup = await getSetup(match.setupId)
-  if (setup) {
-    setup.status = 'idle'
-    setup.currentMatch = null
-    await updateSetup(setup)
-
-    // Start next match if queue is not empty
-    await startNextMatch(match.setupId)
-  }
-}
-
-// === Match time check ===
 
 export async function checkMatchTimeout(setupId: string): Promise<{ expired: boolean; fiveMinWarning: boolean }> {
   const setup = await getSetup(setupId)
-  if (!setup || !setup.currentMatch || setup.currentMatch.status !== 'active') {
-    return { expired: false, fiveMinWarning: false }
-  }
+  if (!setup || !setup.current_match_id || setup.status !== 'in_use') return { expired: false, fiveMinWarning: false }
 
-  const match = setup.currentMatch
-  const now = Date.now()
-  const remaining = match.endsAt - now
+  const match = await getMatch(setup.current_match_id)
+  if (!match || match.status !== 'active') return { expired: false, fiveMinWarning: false }
 
-  // Match expired
+  const now = new Date()
+  const remaining = new Date(match.ends_at).getTime() - now.getTime()
+
   if (remaining <= 0) {
     await endMatch(match.id)
     return { expired: true, fiveMinWarning: false }
   }
 
-  // Warning before end (between warning-3s and warning to avoid repeat alerts)
-  const tournament = await getTournament(setup.tournamentId)
-  const timer = getTimerMs(tournament?.timerSettings)
+  const tournament = await getTournament(match.tournament_id)
+  const timer = getTimer(tournament)
   if (remaining <= timer.fiveMinWarning && remaining > timer.fiveMinWarning - 3000) {
     return { expired: false, fiveMinWarning: true }
   }
@@ -418,110 +323,52 @@ export async function checkMatchTimeout(setupId: string): Promise<{ expired: boo
   return { expired: false, fiveMinWarning: false }
 }
 
-// === Calling timeout check ===
+// === Force operations ===
 
-export async function checkCallingTimeout(setupId: string): Promise<{ timedOut: boolean; penalized: string[] }> {
+export async function forceEndMatch(setupId: string) {
   const setup = await getSetup(setupId)
-  if (!setup || !setup.currentMatch || setup.currentMatch.status !== 'calling') {
-    return { timedOut: false, penalized: [] }
-  }
-
-  const match = setup.currentMatch
-  const now = Date.now()
-
-  // Not timed out yet
-  if (match.endsAt > now) {
-    return { timedOut: false, penalized: [] }
-  }
-
-  // Timed out — penalize players who didn't press ready
-  const penalized: string[] = []
-  if (!match.player1Ready) {
-    await addPenalty(match.player1.id, setup.tournamentId)
-    penalized.push(match.player1.name || match.player1.xUsername)
-  }
-  if (!match.player2Ready) {
-    await addPenalty(match.player2.id, setup.tournamentId)
-    penalized.push(match.player2.name || match.player2.xUsername)
-  }
-
-  // Cancel the match
-  match.status = 'finished'
-  await redis.set(`match:${match.id}`, JSON.stringify(match))
-
-  // Reset setup and start next match
-  setup.status = 'idle'
-  setup.currentMatch = null
-  await updateSetup(setup)
-  await startNextMatch(setupId)
-
-  return { timedOut: true, penalized }
+  if (!setup || !setup.current_match_id) return
+  await endMatch(setup.current_match_id)
 }
 
-// === Force operations (organizer) ===
-
-export async function forceEndMatch(setupId: string): Promise<void> {
-  const setup = await getSetup(setupId)
-  if (!setup || !setup.currentMatch) return
-  await endMatch(setup.currentMatch.id)
-}
-
-export async function forceRemoveFromQueue(setupId: string, entryId: string): Promise<void> {
-  await removeFromQueue(setupId, entryId)
+export async function forceRemoveFromQueue(setupId: string, entryId: string) {
+  await supabase.from('queue_entries').delete().eq('id', entryId)
 }
 
 // === Penalty ===
 
-export async function addPenalty(playerId: string, tournamentId: string): Promise<void> {
-  const timer = await getTimerForTournament(tournamentId)
-  const penaltySec = Math.ceil(timer.penaltyDuration / 1000)
-  const penalty: Penalty = {
-    playerId,
-    tournamentId,
-    until: Date.now() + timer.penaltyDuration,
-    reason: 'no_show',
-  }
-  await redis.set(`penalty:${playerId}:${tournamentId}`, JSON.stringify(penalty), { ex: penaltySec })
+export async function addPenalty(playerId: string, tournamentId: string) {
+  const tournament = await getTournament(tournamentId)
+  const timer = getTimer(tournament)
+  const untilAt = new Date(Date.now() + timer.penaltyDuration).toISOString()
+  await supabase.from('penalties').insert({ player_id: playerId, tournament_id: tournamentId, until_at: untilAt, reason: 'no_show' })
 }
 
-export async function getPlayerPenalty(playerId: string, tournamentId: string): Promise<Penalty | null> {
-  const data = await redis.get(`penalty:${playerId}:${tournamentId}`)
-  const penalty = parse<Penalty>(data)
-  if (!penalty) return null
-  if (penalty.until < Date.now()) return null
-  return penalty
-}
-
-// === Player Tournaments ===
-
-export async function getPlayerTournaments(playerId: string): Promise<Tournament[]> {
-  const ids = await redis.smembers(`player:${playerId}:tournaments`)
-  const tournaments: Tournament[] = []
-  for (const id of ids) {
-    const t = await getTournament(id)
-    if (t) tournaments.push(t)
-  }
-  return tournaments.sort((a, b) => b.createdAt - a.createdAt)
+export async function getPlayerPenalty(playerId: string, tournamentId: string) {
+  const { data } = await supabase.from('penalties').select().eq('player_id', playerId).eq('tournament_id', tournamentId).gt('until_at', new Date().toISOString()).order('until_at', { ascending: false }).limit(1)
+  return data && data.length > 0 ? data[0] : null
 }
 
 // === Templates ===
 
-const DEFAULT_TEMPLATES = [
-  "レート1500前後",
-  "レート1600前後",
-  "レート1700前後",
-  "レート1800以上",
-  "おま3",
-  "おま5",
-  "誰でもOK",
-]
-
-export async function getTemplates(tournamentId: string): Promise<string[]> {
-  const data = await redis.get(`tournament:${tournamentId}:templates`)
-  const templates = parse<string[]>(data)
-  return templates || DEFAULT_TEMPLATES
+export async function getTemplates(tournamentId: string) {
+  const { data } = await supabase.from('templates').select().eq('tournament_id', tournamentId).single()
+  if (data) return data.templates as string[]
+  return ['レート1500前後', 'レート1600前後', 'レート1700前後', 'レート1800以上', 'おま3', 'おま5', '誰でもOK']
 }
 
-export async function saveTemplates(tournamentId: string, templates: string[]): Promise<void> {
-  await redis.set(`tournament:${tournamentId}:templates`, JSON.stringify(templates))
+export async function saveTemplates(tournamentId: string, templates: string[]) {
+  await supabase.from('templates').upsert({ tournament_id: tournamentId, templates })
+}
+
+// === Timer settings ===
+
+export async function saveTimerSettings(tournamentId: string, settings: TimerSettings) {
+  await supabase.from('tournaments').update({
+    match_duration: settings.matchDuration,
+    recruitment_expiry: settings.recruitmentExpiry,
+    calling_timeout: settings.callingTimeout,
+    five_min_warning: settings.fiveMinWarning,
+    penalty_duration: settings.penaltyDuration,
+  }).eq('id', tournamentId)
 }

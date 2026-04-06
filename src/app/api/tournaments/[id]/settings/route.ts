@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { getTournament } from '@/lib/tournament'
-import { redis } from '@/lib/redis'
-import type { TimerSettings } from '@/lib/types'
+import { getTournament, saveTimerSettings } from '@/lib/tournament'
 import { DEFAULT_TIMER_SETTINGS } from '@/lib/types'
+import type { TimerSettings } from '@/lib/types'
 
-// GET: タイマー設定取得
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const tournament = await getTournament(id)
   if (!tournament) return NextResponse.json({ error: '大会が見つかりません' }, { status: 404 })
-  return NextResponse.json(tournament.timerSettings || DEFAULT_TIMER_SETTINGS)
+  return NextResponse.json({
+    matchDuration: tournament.match_duration ?? DEFAULT_TIMER_SETTINGS.matchDuration,
+    recruitmentExpiry: tournament.recruitment_expiry ?? DEFAULT_TIMER_SETTINGS.recruitmentExpiry,
+    callingTimeout: tournament.calling_timeout ?? DEFAULT_TIMER_SETTINGS.callingTimeout,
+    fiveMinWarning: tournament.five_min_warning ?? DEFAULT_TIMER_SETTINGS.fiveMinWarning,
+    penaltyDuration: tournament.penalty_duration ?? DEFAULT_TIMER_SETTINGS.penaltyDuration,
+  })
 }
 
-// PUT: タイマー設定更新（主催者のみ）
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const user = await getSession()
@@ -21,19 +24,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const tournament = await getTournament(id)
   if (!tournament) return NextResponse.json({ error: '大会が見つかりません' }, { status: 404 })
-  if (tournament.organizerId !== user.id) return NextResponse.json({ error: '主催者のみ操作可能です' }, { status: 403 })
+  if (tournament.organizer_id !== user.id) return NextResponse.json({ error: '主催者のみ' }, { status: 403 })
 
   const settings: TimerSettings = await req.json()
-
-  // Validate
-  if (settings.matchDuration < 1 || settings.matchDuration > 120) return NextResponse.json({ error: '対戦時間は1〜120分' }, { status: 400 })
-  if (settings.recruitmentExpiry < 1 || settings.recruitmentExpiry > 60) return NextResponse.json({ error: '募集期限は1〜60分' }, { status: 400 })
-  if (settings.callingTimeout < 1 || settings.callingTimeout > 30) return NextResponse.json({ error: '呼び出し猶予は1〜30分' }, { status: 400 })
-  if (settings.fiveMinWarning < 0 || settings.fiveMinWarning > settings.matchDuration) return NextResponse.json({ error: '終了前通知は対戦時間以下' }, { status: 400 })
-  if (settings.penaltyDuration < 0 || settings.penaltyDuration > 60) return NextResponse.json({ error: 'ペナルティは0〜60分' }, { status: 400 })
-
-  tournament.timerSettings = settings
-  await redis.set(`tournament:${id}`, JSON.stringify(tournament))
-
+  await saveTimerSettings(id, settings)
   return NextResponse.json(settings)
 }

@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { redis } from './redis'
+import { supabase } from './supabase'
 import bcrypt from 'bcryptjs'
 
 export type SessionUser = {
@@ -10,12 +10,12 @@ export type SessionUser = {
 
 export type UserProfile = {
   id: string
-  xUsername: string
+  x_username: string
   name: string
-  passwordHash: string
-  createdAt: number
-  matchCount: number
-  tournamentCount: number
+  password_hash: string
+  created_at: string
+  match_count: number
+  tournament_count: number
 }
 
 // === Session ===
@@ -37,7 +37,7 @@ export async function setSession(user: SessionUser): Promise<void> {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 30, // 30 days
+    maxAge: 60 * 60 * 24 * 30,
     path: '/',
   })
 }
@@ -49,61 +49,45 @@ export async function clearSession(): Promise<void> {
 
 // === User CRUD ===
 
-export async function registerUser(xUsername: string, password: string, name?: string): Promise<UserProfile | null> {
+export async function registerUser(xUsername: string, password: string, name?: string) {
   const id = xUsername.toLowerCase()
 
-  // Check if already exists
-  const existing = await redis.get(`user:${id}`)
+  const { data: existing } = await supabase.from('users').select().eq('id', id).single()
   if (existing) return null
 
   const passwordHash = await bcrypt.hash(password, 10)
-  const profile: UserProfile = {
+  const { data, error } = await supabase.from('users').insert({
     id,
-    xUsername,
+    x_username: xUsername,
     name: name || xUsername,
-    passwordHash,
-    createdAt: Date.now(),
-    matchCount: 0,
-    tournamentCount: 0,
-  }
-
-  await redis.set(`user:${id}`, JSON.stringify(profile))
-  return profile
+    password_hash: passwordHash,
+  }).select().single()
+  if (error) return null
+  return data as UserProfile
 }
 
-export async function loginUser(xUsername: string, password: string): Promise<UserProfile | null> {
+export async function loginUser(xUsername: string, password: string) {
   const id = xUsername.toLowerCase()
-  const data = await redis.get(`user:${id}`)
+  const { data } = await supabase.from('users').select().eq('id', id).single()
   if (!data) return null
 
-  const profile: UserProfile = typeof data === 'string' ? JSON.parse(data) : data as UserProfile
-  const valid = await bcrypt.compare(password, profile.passwordHash)
+  const profile = data as UserProfile
+  const valid = await bcrypt.compare(password, profile.password_hash)
   if (!valid) return null
 
   return profile
 }
 
-export async function getUserProfile(id: string): Promise<UserProfile | null> {
-  const data = await redis.get(`user:${id}`)
-  if (!data) return null
-  return typeof data === 'string' ? JSON.parse(data) : data as UserProfile
+export async function getUserProfile(id: string) {
+  const { data } = await supabase.from('users').select().eq('id', id).single()
+  return data as UserProfile | null
 }
 
-export async function updateUserProfile(id: string, updates: { name?: string; password?: string }): Promise<UserProfile | null> {
-  const profile = await getUserProfile(id)
-  if (!profile) return null
+export async function updateUserProfile(id: string, updates: { name?: string; password?: string }) {
+  const dbUpdates: Record<string, unknown> = {}
+  if (updates.name) dbUpdates.name = updates.name
+  if (updates.password) dbUpdates.password_hash = await bcrypt.hash(updates.password, 10)
 
-  if (updates.name) profile.name = updates.name
-  if (updates.password) profile.passwordHash = await bcrypt.hash(updates.password, 10)
-
-  await redis.set(`user:${id}`, JSON.stringify(profile))
-  return profile
-}
-
-export async function incrementMatchCount(userId: string): Promise<void> {
-  const profile = await getUserProfile(userId)
-  if (profile) {
-    profile.matchCount = (profile.matchCount || 0) + 1
-    await redis.set(`user:${userId}`, JSON.stringify(profile))
-  }
+  const { data } = await supabase.from('users').update(dbUpdates).eq('id', id).select().single()
+  return data as UserProfile | null
 }
