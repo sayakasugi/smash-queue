@@ -91,7 +91,7 @@ export function useSetupDetail(setupId: string | null, tournamentId: string) {
 // === My status across tournament ===
 
 export function useMyStatus(tournamentId: string, userId: string | undefined) {
-  const [status, setStatus] = useState({ hasRecruitment: false, inQueue: false, inMatch: false, recruitmentSetupName: "" })
+  const [status, setStatus] = useState({ hasRecruitment: false, inQueue: false, inMatch: false, recruitmentSetupName: "", hasPenalty: false, penaltyUntil: null as string | null })
 
   const fetchStatus = useCallback(async () => {
     if (!userId) return

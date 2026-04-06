@@ -618,7 +618,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   const myReady = isPlayer1 ? match?.player1_ready : match?.player2_ready
   const isInQueue = queue.some((e) => e.player1_id === xId || e.player2_id === xId)
   const isDisabled = setup.status === "disabled"
-  const isBusy = isInMatch || isInQueue || isDisabled || myStatus.hasRecruitment || myStatus.inQueue || myStatus.inMatch
+  const isBusy = isInMatch || isInQueue || isDisabled || myStatus.hasRecruitment || myStatus.inQueue || myStatus.inMatch || myStatus.hasPenalty
 
   return (
     <div className="space-y-6">
@@ -749,7 +749,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
                   {creator.id !== xId ? (
                     isBusy ? (
                       <span className="text-xs text-[var(--muted)]">
-                        {myStatus.hasRecruitment ? "募集中は他の募集に参加できません" : "参加できません"}
+                        {myStatus.hasPenalty ? "ペナルティ中は参加できません" : myStatus.hasRecruitment ? "募集中は他の募集に参加できません" : "参加できません"}
                       </span>
                     ) : (
                       <button
@@ -780,7 +780,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       {isBusy ? (
         <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-5 text-center">
           <p className="text-sm text-[var(--muted)]">
-            {isDisabled ? "この台は使用不可です" : (isInMatch || myStatus.inMatch) ? "対戦中は新しい募集を作成できません" : myStatus.hasRecruitment ? `「${myStatus.recruitmentSetupName}」で募集中です。キャンセルしてから再度お試しください` : (isInQueue || myStatus.inQueue) ? "キューで待機中は新しい募集を作成できません" : "募集できません"}
+            {isDisabled ? "この台は使用不可です" : myStatus.hasPenalty ? <PenaltyMessage until={myStatus.penaltyUntil} /> : (isInMatch || myStatus.inMatch) ? "対戦中は新しい募集を作成できません" : myStatus.hasRecruitment ? `「${myStatus.recruitmentSetupName}」で募集中です。キャンセルしてから再度お試しください` : (isInQueue || myStatus.inQueue) ? "キューで待機中は新しい募集を作成できません" : "募集できません"}
           </p>
         </div>
       ) : (
@@ -819,6 +819,28 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
 }
 
 // === Helper Components ===
+
+function PenaltyMessage({ until }: { until: string | null }) {
+  const [remaining, setRemaining] = useState("")
+  useEffect(() => {
+    if (!until) return
+    const update = () => {
+      const diff = Math.max(0, new Date(until).getTime() - Date.now())
+      const min = Math.floor(diff / 60000)
+      const sec = Math.floor((diff % 60000) / 1000)
+      setRemaining(`${min}:${sec.toString().padStart(2, "0")}`)
+    }
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [until])
+  return (
+    <span className="text-[var(--danger)]">
+      ⚠️ ペナルティ中です（残り {remaining}）<br />
+      <span className="text-xs">呼び出しに応答しなかったため、一時的に募集・参加ができません</span>
+    </span>
+  )
+}
 
 function XLink({ player }: { player: Player }) {
   if (player.xUsername) {
