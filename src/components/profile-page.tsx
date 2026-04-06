@@ -61,16 +61,19 @@ export function ProfilePage({ user, onClose, onLogout }: Props) {
 
         <div className="text-center">
           <div className="w-20 h-20 mx-auto bg-[var(--accent)]/20 rounded-full flex items-center justify-center text-3xl font-bold text-[var(--accent)]">
-            {(profile?.name || user.xUsername)[0]?.toUpperCase()}
+            {(profile?.name || user.name)[0]?.toUpperCase()}
           </div>
-          <a
-            href={`https://x.com/${user.xUsername}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--accent)] hover:underline text-sm mt-3 inline-block"
-          >
-            @{user.xUsername}
-          </a>
+          <p className="text-lg font-bold mt-3">{profile?.name || user.name}</p>
+          {user.xUsername && (
+            <a
+              href={`https://x.com/${user.xUsername}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--accent)] hover:underline text-sm mt-1 inline-block"
+            >
+              @{user.xUsername}
+            </a>
+          )}
         </div>
 
         {profile && (

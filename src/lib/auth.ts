@@ -49,8 +49,8 @@ export async function clearSession(): Promise<void> {
 
 // === User CRUD ===
 
-export async function registerUser(xUsername: string, password: string, name?: string) {
-  const id = xUsername.toLowerCase()
+export async function registerUser(username: string, password: string, xUsername?: string) {
+  const id = username.toLowerCase()
 
   const { data: existing } = await supabase.from('users').select().eq('id', id).single()
   if (existing) return null
@@ -58,16 +58,16 @@ export async function registerUser(xUsername: string, password: string, name?: s
   const passwordHash = await bcrypt.hash(password, 10)
   const { data, error } = await supabase.from('users').insert({
     id,
-    x_username: xUsername,
-    name: name || xUsername,
+    x_username: xUsername || '',
+    name: username,
     password_hash: passwordHash,
   }).select().single()
   if (error) return null
   return data as UserProfile
 }
 
-export async function loginUser(xUsername: string, password: string) {
-  const id = xUsername.toLowerCase()
+export async function loginUser(username: string, password: string) {
+  const id = username.toLowerCase()
   const { data } = await supabase.from('users').select().eq('id', id).single()
   if (!data) return null
 

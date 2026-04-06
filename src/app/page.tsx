@@ -10,9 +10,9 @@ export default function Home() {
   const nameRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<"join" | "create">("join")
   const [authMode, setAuthMode] = useState<"login" | "register">("login")
+  const [username, setUsername] = useState("")
   const [xUsername, setXUsername] = useState("")
   const [password, setPassword] = useState("")
-  const [displayName, setDisplayName] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
@@ -60,15 +60,15 @@ export default function Home() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  xUsername,
+                  username,
                   password,
                   action: authMode === "register" ? "register" : "login",
-                  name: displayName || undefined,
+                  xUsername: xUsername || undefined,
                 }),
               })
               const data = await res.json()
               if (res.ok && data.user) {
-                login(data.user.xUsername, data.user.name)
+                login(data.user.xUsername || data.user.name, data.user.name)
                 window.location.reload()
               } else {
                 setError(data.error || "エラーが発生しました")
@@ -78,29 +78,29 @@ export default function Home() {
             className="space-y-4 text-left"
           >
             <div>
-              <label className="block text-xs text-[var(--muted)] mb-1.5">X（Twitter）ID</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]">@</span>
-                <input
-                  type="text"
-                  value={xUsername}
-                  onChange={(e) => setXUsername(e.target.value.replace(/^@/, ""))}
-                  placeholder="your_x_id"
-                  className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-3.5 pl-10 pr-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
-                />
-              </div>
+              <label className="block text-xs text-[var(--muted)] mb-1.5">ユーザー名</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="2文字以上"
+                className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-3.5 px-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
+              />
             </div>
 
             {authMode === "register" && (
               <div>
-                <label className="block text-xs text-[var(--muted)] mb-1.5">表示名（任意）</label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="大会で表示される名前"
-                  className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-3.5 px-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
-                />
+                <label className="block text-xs text-[var(--muted)] mb-1.5">X（Twitter）ID（任意）</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]">@</span>
+                  <input
+                    type="text"
+                    value={xUsername}
+                    onChange={(e) => setXUsername(e.target.value.replace(/^@/, ""))}
+                    placeholder="未入力でもOK"
+                    className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-3.5 pl-10 pr-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
+                  />
+                </div>
               </div>
             )}
 
@@ -174,7 +174,7 @@ export default function Home() {
           <h1 className="text-3xl font-bold mb-2">⚡ SmashQueue</h1>
           <div className="flex items-center justify-center gap-3 text-sm">
             <button onClick={() => setShowProfile(true)} className="text-[var(--accent)] hover:underline">
-              @{user.xUsername}
+              {user.name}{user.xUsername ? ` (@${user.xUsername})` : ""}
             </button>
             <button onClick={logout} className="text-xs text-[var(--danger)] hover:underline">ログアウト</button>
           </div>

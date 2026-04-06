@@ -821,16 +821,19 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
 // === Helper Components ===
 
 function XLink({ player }: { player: Player }) {
-  return (
-    <a
-      href={`https://x.com/${player.xUsername}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-[var(--accent)] hover:underline"
-    >
-      {player.name || `@${player.xUsername}`}
-    </a>
-  )
+  if (player.xUsername) {
+    return (
+      <a
+        href={`https://x.com/${player.xUsername}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[var(--accent)] hover:underline"
+      >
+        {player.name}{player.xUsername !== player.name ? ` (@${player.xUsername})` : ""}
+      </a>
+    )
+  }
+  return <span className="text-foreground font-semibold">{player.name}</span>
 }
 
 function Timer({ endsAt }: { endsAt: number }) {
