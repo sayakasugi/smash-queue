@@ -48,9 +48,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!tournament) return NextResponse.json({ error: '大会が見つかりません' }, { status: 404 })
   if (tournament.organizer_id !== user.id) return NextResponse.json({ error: '主催者のみ' }, { status: 403 })
 
-  const { setupId } = await req.json()
-  await deleteSetup(setupId)
-  return NextResponse.json({ success: true })
+  try {
+    const { setupId } = await req.json()
+    await deleteSetup(setupId)
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

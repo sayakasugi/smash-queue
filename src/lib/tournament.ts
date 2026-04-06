@@ -107,6 +107,10 @@ export async function updateSetup(id: string, updates: Partial<Setup>) {
 }
 
 export async function deleteSetup(id: string) {
+  // Delete related data first to avoid FK issues
+  await supabase.from('queue_entries').delete().eq('setup_id', id)
+  await supabase.from('recruitments').delete().eq('setup_id', id)
+  await supabase.from('matches').delete().eq('setup_id', id)
   await supabase.from('setups').delete().eq('id', id)
 }
 
