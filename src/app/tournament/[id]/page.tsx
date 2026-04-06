@@ -405,6 +405,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   const [template, setTemplate] = useState("")
   const [description, setDescription] = useState("")
   const [loading, setLoading] = useState(false)
+  const [myStatus, setMyStatus] = useState<{ hasRecruitment: boolean; inQueue: boolean; inMatch: boolean; recruitmentSetupName: string }>({ hasRecruitment: false, inQueue: false, inMatch: false, recruitmentSetupName: "" })
   const prevStatusRef = useRef<string>("")
 
   // Fetch templates
@@ -416,10 +417,12 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
 
   // Poll setup state
   const fetchState = useCallback(async () => {
-    const [matchRes, recruitRes] = await Promise.all([
+    const [matchRes, recruitRes, statusRes] = await Promise.all([
       fetch(`/api/setups/${setupId}/match`),
       fetch(`/api/setups/${setupId}/recruit`),
+      fetch(`/api/tournaments/${tournamentId}/my-status`),
     ])
+    if (statusRes.ok) setMyStatus(await statusRes.json())
     if (matchRes.ok) {
       const data = await matchRes.json()
       // Notify if calling and involves this player
@@ -552,8 +555,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   const myReady = isPlayer1 ? match?.player1Ready : match?.player2Ready
   const isInQueue = queue.some((e) => e.player1.id === xId || e.player2.id === xId)
   const isDisabled = setup.status === "disabled"
-  const hasActiveRecruitment = recruitments.some((r) => r.creator.id === xId)
-  const isBusy = isInMatch || isInQueue || isDisabled || hasActiveRecruitment
+  const isBusy = isInMatch || isInQueue || isDisabled || myStatus.hasRecruitment || myStatus.inQueue || myStatus.inMatch
 
   return (
     <div className="space-y-6">
@@ -706,7 +708,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       {isBusy ? (
         <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-5 text-center">
           <p className="text-sm text-[var(--muted)]">
-            {isDisabled ? "この台は使用不可です" : isInMatch ? "対戦中は新しい募集を作成できません" : hasActiveRecruitment ? "既に募集中です。募集をキャンセルしてから再度お試しください" : "キューで待機中は新しい募集を作成できません"}
+            {isDisabled ? "この台は使用不可です" : (isInMatch || myStatus.inMatch) ? "対戦中は新しい募集を作成できません" : myStatus.hasRecruitment ? `「${myStatus.recruitmentSetupName}」で募集中です。キャンセルしてから再度お試しください` : (isInQueue || myStatus.inQueue) ? "キューで待機中は新しい募集を作成できません" : "募集できません"}
           </p>
         </div>
       ) : (
