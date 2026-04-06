@@ -368,6 +368,8 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
   const isInMatch = match && (match.player1.id === xId || match.player2.id === xId)
   const isPlayer1 = match?.player1.id === xId
   const myReady = isPlayer1 ? match?.player1Ready : match?.player2Ready
+  const isInQueue = queue.some((e) => e.player1.id === xId || e.player2.id === xId)
+  const isBusy = isInMatch || isInQueue
 
   return (
     <div className="space-y-6">
@@ -508,6 +510,13 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
       </div>
 
       {/* Create recruitment */}
+      {isBusy ? (
+        <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-5 text-center">
+          <p className="text-sm text-[var(--muted)]">
+            {isInMatch ? "対戦中は新しい募集を作成できません" : "キューで待機中は新しい募集を作成できません"}
+          </p>
+        </div>
+      ) : (
       <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-5">
         <h3 className="text-sm font-semibold mb-4">対戦を募集する</h3>
         <div className="space-y-3">
@@ -542,6 +551,7 @@ function SetupDetail({ setupId, tournamentId, xId, isOrganizer, playSound }: {
           </button>
         </div>
       </div>
+      )}
     </div>
   )
 }

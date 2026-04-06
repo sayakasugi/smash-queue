@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useAuth } from "./providers"
 
 export default function Home() {
   const { user, loading, login, logout } = useAuth()
   const [xUsername, setXUsername] = useState("")
+  const codeRef = useRef<HTMLInputElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
   const [code, setCode] = useState("")
   const [name, setName] = useState("")
   const [mode, setMode] = useState<"join" | "create">("join")
@@ -73,10 +75,12 @@ export default function Home() {
 
     try {
       if (mode === "join") {
+        const codeVal = (codeRef.current?.value || "").replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+        if (!codeVal) { setError("コードを入力してください"); setSubmitting(false); return }
         const res = await fetch("/api/tournaments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "join", code: code.toUpperCase() }),
+          body: JSON.stringify({ action: "join", code: codeVal }),
         })
         if (!res.ok) {
           setError("大会が見つかりません。コードを確認してください。")
@@ -86,7 +90,8 @@ export default function Home() {
         const tournament = await res.json()
         window.location.href = `/tournament/${tournament.id}`
       } else {
-        if (!name.trim()) {
+        const nameVal = nameRef.current?.value?.trim() || ""
+        if (!nameVal) {
           setError("大会名を入力してください")
           setSubmitting(false)
           return
@@ -94,7 +99,7 @@ export default function Home() {
         const res = await fetch("/api/tournaments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "create", name: name.trim() }),
+          body: JSON.stringify({ action: "create", name: nameVal }),
         })
         const tournament = await res.json()
         window.location.href = `/tournament/${tournament.id}`
@@ -138,23 +143,21 @@ export default function Home() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === "join" ? (
             <input
+              ref={codeRef}
               type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())}
               placeholder="大会コードを入力"
               maxLength={6}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="characters"
               spellCheck={false}
-              inputMode="text"
+              style={{ textTransform: "uppercase" }}
               className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white text-center text-2xl font-mono tracking-[0.3em] py-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)] placeholder:text-base placeholder:tracking-normal"
             />
           ) : (
             <input
+              ref={nameRef}
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
               placeholder="大会名を入力"
               className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-4 px-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
             />
