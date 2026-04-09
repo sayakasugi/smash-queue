@@ -9,7 +9,7 @@ export default function Home() {
   const codeRef = useRef<HTMLInputElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<"join" | "create">("join")
-  const [authMode, setAuthMode] = useState<"login" | "register">("login")
+  const [authMode, setAuthMode] = useState<"login" | "register" | "reset">("login")
   const [username, setUsername] = useState("")
   const [xUsername, setXUsername] = useState("")
   const [password, setPassword] = useState("")
@@ -56,13 +56,14 @@ export default function Home() {
               e.preventDefault()
               setError("")
               setSubmitting(true)
+              const action = authMode === "register" ? "register" : authMode === "reset" ? "reset" : "login"
               const res = await fetch("/api/auth", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   username,
                   password,
-                  action: authMode === "register" ? "register" : "login",
+                  action,
                   xUsername: xUsername || undefined,
                 }),
               })
@@ -77,6 +78,12 @@ export default function Home() {
             }}
             className="space-y-4 text-left"
           >
+            {authMode === "reset" && (
+              <p className="text-xs text-[var(--muted)] text-center">
+                ユーザー名と登録時のX IDを入力してパスワードを再設定します
+              </p>
+            )}
+
             <div>
               <label className="block text-xs text-[var(--muted)] mb-1.5">ユーザー名</label>
               <input
@@ -88,16 +95,16 @@ export default function Home() {
               />
             </div>
 
-            {authMode === "register" && (
+            {(authMode === "register" || authMode === "reset") && (
               <div>
-                <label className="block text-xs text-[var(--muted)] mb-1.5">X（Twitter）ID（任意）</label>
+                <label className="block text-xs text-[var(--muted)] mb-1.5">X（Twitter）ID</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]">@</span>
                   <input
                     type="text"
                     value={xUsername}
                     onChange={(e) => setXUsername(e.target.value.replace(/^@/, ""))}
-                    placeholder="未入力でもOK"
+                    placeholder="your_x_id"
                     className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-3.5 pl-10 pr-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
                   />
                 </div>
@@ -105,7 +112,9 @@ export default function Home() {
             )}
 
             <div>
-              <label className="block text-xs text-[var(--muted)] mb-1.5">パスワード</label>
+              <label className="block text-xs text-[var(--muted)] mb-1.5">
+                {authMode === "reset" ? "新しいパスワード" : "パスワード"}
+              </label>
               <input
                 type="password"
                 value={password}
@@ -122,8 +131,27 @@ export default function Home() {
               disabled={submitting}
               className="w-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold py-4 rounded-xl transition-colors disabled:opacity-50"
             >
-              {submitting ? "処理中..." : authMode === "login" ? "ログイン" : "登録する"}
+              {submitting ? "処理中..." : authMode === "login" ? "ログイン" : authMode === "register" ? "登録する" : "パスワードを再設定"}
             </button>
+
+            {authMode === "login" && (
+              <button
+                type="button"
+                onClick={() => { setAuthMode("reset"); setError("") }}
+                className="w-full text-center text-xs text-[var(--muted)] hover:text-[var(--accent)] transition-colors"
+              >
+                パスワードを忘れた方はこちら
+              </button>
+            )}
+            {authMode === "reset" && (
+              <button
+                type="button"
+                onClick={() => { setAuthMode("login"); setError("") }}
+                className="w-full text-center text-xs text-[var(--muted)] hover:text-[var(--accent)] transition-colors"
+              >
+                ← ログインに戻る
+              </button>
+            )}
           </form>
         </div>
       </div>

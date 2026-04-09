@@ -77,7 +77,15 @@ export default function TournamentPage() {
   useEffect(() => {
     fetch(`/api/tournaments/${id}`)
       .then(r => { if (r.ok) return r.json(); return null })
-      .then(data => { if (data) setTournament(data) })
+      .then(data => {
+        if (data) {
+          setTournament(data)
+        } else {
+          // Tournament not found — redirect home
+          window.location.href = "/"
+        }
+      })
+      .catch(() => { window.location.href = "/" })
   }, [id])
 
   // Add setup (single)

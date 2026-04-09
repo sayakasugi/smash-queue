@@ -108,6 +108,30 @@ export async function loginUser(username: string, password: string) {
   return profile
 }
 
+export async function resetPasswordByXId(username: string, xUsername: string, newPassword: string) {
+  const id = normalizeUsername(username)
+  const xClean = xUsername.replace(/^@/, '').trim()
+
+  // Find user by id
+  const { data } = await supabase.from('users').select().eq('id', id).single()
+  if (!data) {
+    console.error('Reset: user not found:', id)
+    return null
+  }
+
+  const profile = data as UserProfile
+  // Verify X ID matches (case insensitive)
+  if (!profile.x_username || profile.x_username.toLowerCase() !== xClean.toLowerCase()) {
+    console.error('Reset: X ID mismatch. Expected:', profile.x_username, 'Got:', xClean)
+    return null
+  }
+
+  // Update password
+  const passwordHash = await bcrypt.hash(newPassword, 10)
+  const { data: updated } = await supabase.from('users').update({ password_hash: passwordHash }).eq('id', id).select().single()
+  return updated as UserProfile | null
+}
+
 export async function getUserProfile(id: string) {
   const { data } = await supabase.from('users').select().eq('id', id).single()
   return data as UserProfile | null
