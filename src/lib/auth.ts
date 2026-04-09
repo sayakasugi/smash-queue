@@ -49,8 +49,14 @@ export async function clearSession(): Promise<void> {
 
 // === User CRUD ===
 
+// Normalize username: NFC normalization + lowercase for stable matching
+function normalizeUsername(username: string): string {
+  return username.normalize('NFC').toLowerCase().trim()
+}
+
 export async function registerUser(username: string, password: string, xUsername?: string) {
-  const id = username.toLowerCase()
+  const id = normalizeUsername(username)
+  const name = username.normalize('NFC').trim()
 
   const { data: existing } = await supabase.from('users').select().eq('id', id).single()
   if (existing) return null
@@ -59,21 +65,45 @@ export async function registerUser(username: string, password: string, xUsername
   const { data, error } = await supabase.from('users').insert({
     id,
     x_username: xUsername || '',
-    name: username,
+    name,
     password_hash: passwordHash,
   }).select().single()
-  if (error) return null
+  if (error) {
+    console.error('Register error:', error)
+    return null
+  }
   return data as UserProfile
 }
 
 export async function loginUser(username: string, password: string) {
-  const id = username.toLowerCase()
-  const { data } = await supabase.from('users').select().eq('id', id).single()
-  if (!data) return null
+  // Try multiple normalizations to find the user
+  const attempts = [
+    normalizeUsername(username),
+    username.toLowerCase().trim(),
+    username.normalize('NFD').toLowerCase().trim(),
+    username.trim(),
+  ]
+  const uniqueIds = [...new Set(attempts)]
 
-  const profile = data as UserProfile
+  let profile: UserProfile | null = null
+  for (const id of uniqueIds) {
+    const { data } = await supabase.from('users').select().eq('id', id).single()
+    if (data) {
+      profile = data as UserProfile
+      break
+    }
+  }
+
+  if (!profile) {
+    console.error('Login: user not found, tried IDs:', uniqueIds)
+    return null
+  }
+
   const valid = await bcrypt.compare(password, profile.password_hash)
-  if (!valid) return null
+  if (!valid) {
+    console.error('Login: password mismatch for', profile.id)
+    return null
+  }
 
   return profile
 }
