@@ -9,9 +9,9 @@ type Props = {
 }
 
 export function ProfilePage({ user, onClose, onLogout }: Props) {
-  const [profile, setProfile] = useState<{ xUsername: string; name: string; createdAt: number; matchCount: number; tournamentCount: number } | null>(null)
+  const [profile, setProfile] = useState<{ xUsername: string; name: string; createdAt: string; matchCount: number; tournamentCount: number } | null>(null)
   const [editName, setEditName] = useState("")
-  const [newPassword, setNewPassword] = useState("")
+  const [editXUsername, setEditXUsername] = useState("")
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
@@ -23,6 +23,7 @@ export function ProfilePage({ user, onClose, onLogout }: Props) {
         if (data) {
           setProfile(data)
           setEditName(data.name)
+          setEditXUsername(data.xUsername || "")
         }
       })
   }, [])
@@ -30,9 +31,9 @@ export function ProfilePage({ user, onClose, onLogout }: Props) {
   async function saveProfile() {
     setSaving(true)
     setMessage("")
-    const body: { name?: string; password?: string } = {}
+    const body: { name?: string; xUsername?: string } = {}
     if (editName && editName !== profile?.name) body.name = editName
-    if (newPassword) body.password = newPassword
+    if (editXUsername !== (profile?.xUsername || "")) body.xUsername = editXUsername.replace(/^@/, "").trim()
     if (Object.keys(body).length === 0) { setSaving(false); setEditing(false); return }
 
     const res = await fetch("/api/auth/profile", {
@@ -43,8 +44,11 @@ export function ProfilePage({ user, onClose, onLogout }: Props) {
     if (res.ok) {
       setMessage("保存しました")
       setEditing(false)
-      setNewPassword("")
-      if (body.name) setProfile(prev => prev ? { ...prev, name: body.name! } : prev)
+      setProfile(prev => prev ? {
+        ...prev,
+        name: body.name ?? prev.name,
+        xUsername: body.xUsername ?? prev.xUsername,
+      } : prev)
     } else {
       setMessage("エラーが発生しました")
     }
@@ -101,20 +105,23 @@ export function ProfilePage({ user, onClose, onLogout }: Props) {
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--muted)] mb-1.5">新しいパスワード（変更する場合）</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="変更しない場合は空欄"
-                className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-3 px-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
-              />
+              <label className="block text-xs text-[var(--muted)] mb-1.5">X（Twitter）ID</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]">@</span>
+                <input
+                  type="text"
+                  value={editXUsername}
+                  onChange={(e) => setEditXUsername(e.target.value.replace(/^@/, ""))}
+                  placeholder="your_x_id（任意）"
+                  className="w-full bg-[var(--card)] border border-[var(--card-border)] text-white py-3 pl-10 pr-4 rounded-xl focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
+                />
+              </div>
             </div>
             <div className="flex gap-3">
               <button onClick={saveProfile} disabled={saving} className="flex-1 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-50">
                 {saving ? "保存中..." : "保存"}
               </button>
-              <button onClick={() => { setEditing(false); setNewPassword("") }} className="flex-1 bg-[var(--card)] border border-[var(--card-border)] text-white font-semibold py-3 rounded-xl hover:border-[var(--accent)] transition-colors">
+              <button onClick={() => { setEditing(false); setEditXUsername(profile?.xUsername || "") }} className="flex-1 bg-[var(--card)] border border-[var(--card-border)] text-white font-semibold py-3 rounded-xl hover:border-[var(--accent)] transition-colors">
                 キャンセル
               </button>
             </div>

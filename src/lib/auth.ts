@@ -1,147 +1,122 @@
-import { cookies } from 'next/headers'
-import { supabase } from './supabase'
-import bcrypt from 'bcryptjs'
+import { createClient } from "./supabase/server";
 
 export type SessionUser = {
-  id: string
-  name: string
-  xUsername: string
-}
+  id: string;
+  name: string;
+  xUsername: string;
+  onboarded: boolean;
+};
 
 export type UserProfile = {
-  id: string
-  x_username: string
-  name: string
-  password_hash: string
-  created_at: string
-  match_count: number
-  tournament_count: number
+  id: string;
+  x_username: string | null;
+  name: string;
+  avatar_url: string | null;
+  match_count: number;
+  tournament_count: number;
+  created_at: string;
+};
+
+type ProfileRow = {
+  id: string;
+  display_name: string;
+  x_username: string | null;
+  avatar_url: string | null;
+  match_count: number;
+  tournament_count: number;
+  onboarded: boolean;
+  created_at: string;
+};
+
+function toSessionUser(profile: ProfileRow): SessionUser {
+  return {
+    id: profile.id,
+    name: profile.display_name,
+    xUsername: profile.x_username ?? "",
+    onboarded: profile.onboarded,
+  };
 }
 
-// === Session ===
+function toUserProfile(profile: ProfileRow): UserProfile {
+  return {
+    id: profile.id,
+    x_username: profile.x_username,
+    name: profile.display_name,
+    avatar_url: profile.avatar_url,
+    match_count: profile.match_count,
+    tournament_count: profile.tournament_count,
+    created_at: profile.created_at,
+  };
+}
 
 export async function getSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies()
-  const session = cookieStore.get('smashqueue_session')
-  if (!session?.value) return null
-  try {
-    return JSON.parse(session.value)
-  } catch {
-    return null
-  }
-}
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
 
-export async function setSession(user: SessionUser): Promise<void> {
-  const cookieStore = await cookies()
-  cookieStore.set('smashqueue_session', JSON.stringify(user), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 30,
-    path: '/',
-  })
-}
-
-export async function clearSession(): Promise<void> {
-  const cookieStore = await cookies()
-  cookieStore.delete('smashqueue_session')
-}
-
-// === User CRUD ===
-
-// Normalize username: NFC normalization + lowercase for stable matching
-function normalizeUsername(username: string): string {
-  return username.normalize('NFC').toLowerCase().trim()
-}
-
-export async function registerUser(username: string, password: string, xUsername?: string) {
-  const id = normalizeUsername(username)
-  const name = username.normalize('NFC').trim()
-
-  const { data: existing } = await supabase.from('users').select().eq('id', id).single()
-  if (existing) return null
-
-  const passwordHash = await bcrypt.hash(password, 10)
-  const { data, error } = await supabase.from('users').insert({
-    id,
-    x_username: xUsername || '',
-    name,
-    password_hash: passwordHash,
-  }).select().single()
-  if (error) {
-    console.error('Register error:', error)
-    return null
-  }
-  return data as UserProfile
-}
-
-export async function loginUser(username: string, password: string) {
-  // Try multiple normalizations to find the user
-  const attempts = [
-    normalizeUsername(username),
-    username.toLowerCase().trim(),
-    username.normalize('NFD').toLowerCase().trim(),
-    username.trim(),
-  ]
-  const uniqueIds = [...new Set(attempts)]
-
-  let profile: UserProfile | null = null
-  for (const id of uniqueIds) {
-    const { data } = await supabase.from('users').select().eq('id', id).single()
-    if (data) {
-      profile = data as UserProfile
-      break
-    }
-  }
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
 
   if (!profile) {
-    console.error('Login: user not found, tried IDs:', uniqueIds)
-    return null
+    return {
+      id: user.id,
+      name:
+        (user.user_metadata?.full_name as string | undefined) ??
+        (user.user_metadata?.name as string | undefined) ??
+        user.email?.split("@")[0] ??
+        "Player",
+      xUsername: "",
+      onboarded: false,
+    };
   }
 
-  const valid = await bcrypt.compare(password, profile.password_hash)
-  if (!valid) {
-    console.error('Login: password mismatch for', profile.id)
-    return null
-  }
-
-  return profile
+  return toSessionUser(profile as ProfileRow);
 }
 
-export async function resetPasswordByXId(username: string, xUsername: string, newPassword: string) {
-  const id = normalizeUsername(username)
-  const xClean = xUsername.replace(/^@/, '').trim()
-
-  // Find user by id
-  const { data } = await supabase.from('users').select().eq('id', id).single()
-  if (!data) {
-    console.error('Reset: user not found:', id)
-    return null
-  }
-
-  const profile = data as UserProfile
-  // Verify X ID matches (case insensitive)
-  if (!profile.x_username || profile.x_username.toLowerCase() !== xClean.toLowerCase()) {
-    console.error('Reset: X ID mismatch. Expected:', profile.x_username, 'Got:', xClean)
-    return null
-  }
-
-  // Update password
-  const passwordHash = await bcrypt.hash(newPassword, 10)
-  const { data: updated } = await supabase.from('users').update({ password_hash: passwordHash }).eq('id', id).select().single()
-  return updated as UserProfile | null
+export async function getUserProfile(id: string): Promise<UserProfile | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", id)
+    .single();
+  return data ? toUserProfile(data as ProfileRow) : null;
 }
 
-export async function getUserProfile(id: string) {
-  const { data } = await supabase.from('users').select().eq('id', id).single()
-  return data as UserProfile | null
+export async function updateUserProfile(
+  id: string,
+  updates: { name?: string; xUsername?: string; onboarded?: boolean },
+): Promise<{ profile: UserProfile | null; error: string | null }> {
+  const supabase = await createClient();
+  const dbUpdates: Record<string, unknown> = {};
+  if (updates.name !== undefined) dbUpdates.display_name = updates.name;
+  if (updates.xUsername !== undefined)
+    dbUpdates.x_username = updates.xUsername || null;
+  if (updates.onboarded !== undefined) dbUpdates.onboarded = updates.onboarded;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(dbUpdates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("updateUserProfile error:", error);
+    return { profile: null, error: error.message };
+  }
+  return {
+    profile: data ? toUserProfile(data as ProfileRow) : null,
+    error: null,
+  };
 }
 
-export async function updateUserProfile(id: string, updates: { name?: string; password?: string }) {
-  const dbUpdates: Record<string, unknown> = {}
-  if (updates.name) dbUpdates.name = updates.name
-  if (updates.password) dbUpdates.password_hash = await bcrypt.hash(updates.password, 10)
-
-  const { data } = await supabase.from('users').update(dbUpdates).eq('id', id).select().single()
-  return data as UserProfile | null
+export async function signOut(): Promise<void> {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
 }
