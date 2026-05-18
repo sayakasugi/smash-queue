@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { TimerSettings } from './types'
 import { getTimerMs, DEFAULT_TIMER_SETTINGS } from './types'
+import { sendPushToUsers } from './push'
 
 // === Types (DB row shapes) ===
 
@@ -186,6 +187,14 @@ export async function joinRecruitment(recruitmentId: string, player: Player) {
 
   // Add to queue
   const entry = await addToQueue(r.setup_id, r.tournament_id, { id: r.creator_id, name: r.creator_name, xUsername: r.creator_x }, player, recruitmentId)
+
+  void sendPushToUsers([r.creator_id], {
+    title: '対戦相手が見つかりました',
+    body: `${player.name} さんが対戦に参加しました。`,
+    url: `/tournament/${r.tournament_id}`,
+    tag: `match-${recruitmentId}`,
+  })
+
   return entry
 }
 
@@ -247,6 +256,13 @@ export async function startNextMatch(setupId: string) {
 
   await supabase.from('setups').update({ status: 'calling', current_match_id: id }).eq('id', setupId)
   await supabase.from('queue_entries').update({ status: 'calling' }).eq('id', entry.id)
+
+  void sendPushToUsers([entry.player1_id, entry.player2_id], {
+    title: '対戦呼び出し',
+    body: `${setup?.name ?? '台'} で対戦が始まります。準備してください。`,
+    url: `/tournament/${entry.tournament_id}`,
+    tag: `call-${id}`,
+  })
 
   return id
 }
@@ -345,6 +361,17 @@ export async function checkMatchTimeout(setupId: string): Promise<{ expired: boo
   const tournament = await getTournament(match.tournament_id)
   const timer = getTimer(tournament)
   if (remaining <= timer.fiveMinWarning && remaining > timer.fiveMinWarning - 3000) {
+    const matchRow = match as Match & { five_min_pushed?: boolean }
+    if (!matchRow.five_min_pushed) {
+      await supabase.from('matches').update({ five_min_pushed: true }).eq('id', match.id)
+      const minutes = Math.ceil(timer.fiveMinWarning / 60000)
+      void sendPushToUsers([match.player1_id, match.player2_id], {
+        title: '対戦終了まであと少し',
+        body: `残り約${minutes}分です。`,
+        url: `/tournament/${match.tournament_id}`,
+        tag: `warn-${match.id}`,
+      })
+    }
     return { expired: false, fiveMinWarning: true }
   }
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "../../providers"
 import { ProfilePage } from "@/components/profile-page"
+import { NotificationToggle } from "@/components/notification-toggle"
 import { useSetups, useSetupDetail, useMyStatus, useMatchNotification } from "@/hooks/use-realtime"
 
 type Tournament = { id: string; name: string; code: string; organizer_id: string }
@@ -259,6 +260,7 @@ export default function TournamentPage() {
                 <button onClick={openTemplateEditor} className="text-xs text-[var(--accent)] hover:underline">テンプレート</button>
               </>
             )}
+            <NotificationToggle />
             <button onClick={() => setShowProfile(true)} className="text-xs text-[var(--accent)] hover:underline">@{user?.xUsername}</button>
             <a href="/" className="text-sm text-[var(--muted)] hover:text-white">← 戻る</a>
           </div>
