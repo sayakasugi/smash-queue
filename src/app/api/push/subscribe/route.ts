@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("push_subscriptions")
     .upsert(
       {
@@ -32,13 +32,18 @@ export async function POST(req: NextRequest) {
         user_agent: userAgent ?? null,
       },
       { onConflict: "endpoint" },
-    );
+    )
+    .select();
 
   if (error) {
     console.error("push subscribe error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    rowsReturned: data?.length ?? 0,
+    sessionId: session.id,
+  });
 }
 
 // DELETE: remove a subscription by endpoint

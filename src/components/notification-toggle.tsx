@@ -119,8 +119,7 @@ export function NotificationToggle() {
             // [v3] Force-sync current browser subscription to the DB, then test.
             const reg = await navigator.serviceWorker.getRegistration("/sw.js");
             const sub = reg ? await reg.pushManager.getSubscription() : null;
-            let syncStatus = "no-local-sub";
-            let syncBody = "";
+            let syncMsg = "no-local-sub";
             if (sub) {
               const r = await fetch("/api/push/subscribe", {
                 method: "POST",
@@ -130,16 +129,13 @@ export function NotificationToggle() {
                   userAgent: navigator.userAgent,
                 }),
               });
-              syncStatus = String(r.status);
-              if (!r.ok) {
-                const b = await r.json().catch(() => ({}));
-                syncBody = b.error ?? "";
-              }
+              const b = await r.json().catch(() => ({}));
+              syncMsg = `status=${r.status} rows=${b.rowsReturned ?? "?"} sessionId=${(b.sessionId ?? "").slice(0, 8)} ${b.error ?? ""}`;
             }
             const res = await fetch("/api/push/test", { method: "POST" });
             const data = await res.json();
             alert(
-              `[v3] sync=${syncStatus} ${syncBody}\n送信結果:\nenv.hasPublic=${data.env?.hasPublic}\nenv.hasPrivate=${data.env?.hasPrivate}\n購読数=${data.subscriptionCount}`,
+              `[v4] sync: ${syncMsg}\n送信結果:\nenv.hasPublic=${data.env?.hasPublic}\nenv.hasPrivate=${data.env?.hasPrivate}\n購読数=${data.subscriptionCount}`,
             );
           }}
           disabled={busy}
