@@ -116,27 +116,8 @@ export function NotificationToggle() {
       <div className="flex items-center gap-2">
         <button
           onClick={async () => {
-            // [v3] Force-sync current browser subscription to the DB, then test.
-            const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-            const sub = reg ? await reg.pushManager.getSubscription() : null;
-            let syncMsg = "no-local-sub";
-            if (sub) {
-              const r = await fetch("/api/push/subscribe", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  subscription: sub.toJSON(),
-                  userAgent: navigator.userAgent,
-                }),
-              });
-              const b = await r.json().catch(() => ({}));
-              syncMsg = `status=${r.status} rows=${b.rowsReturned ?? "?"} sessionId=${(b.sessionId ?? "").slice(0, 8)} ${b.error ?? ""}`;
-            }
-            const res = await fetch("/api/push/test", { method: "POST" });
-            const data = await res.json();
-            alert(
-              `[v4] sync: ${syncMsg}\n送信結果:\nenv.hasPublic=${data.env?.hasPublic}\nenv.hasPrivate=${data.env?.hasPrivate}\n購読数=${data.subscriptionCount}`,
-            );
+            await fetch("/api/push/test", { method: "POST" });
+            alert("テスト通知を送信しました");
           }}
           disabled={busy}
           className="text-xs bg-[var(--card)] border border-[var(--card-border)] text-white py-1.5 px-2 rounded-lg hover:border-[var(--accent)]"
