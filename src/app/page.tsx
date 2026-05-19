@@ -47,6 +47,23 @@ export default function Home() {
           </button>
 
           <p className="text-xs text-[var(--muted)]">初めての方も、サインインで自動的にアカウントが作成されます</p>
+
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-xl p-4 text-left space-y-2">
+            <p className="text-sm font-semibold flex items-center gap-2">
+              📱 ホーム画面に追加すると便利
+            </p>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              アプリとしてインストールすると、対戦の呼び出しやマッチ成立を<strong className="text-foreground">通知</strong>で受け取れます。
+            </p>
+            <ul className="text-xs text-[var(--muted)] space-y-1 pl-1">
+              <li>
+                <strong className="text-foreground">iPhone:</strong> Safariで開き、共有 → 「ホーム画面に追加」
+              </li>
+              <li>
+                <strong className="text-foreground">Android:</strong> Chromeメニュー → 「ホーム画面に追加」
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     )
