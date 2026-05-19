@@ -118,25 +118,9 @@ export function NotificationToggle() {
       <div className="flex items-center gap-2">
         <button
           onClick={async () => {
-            // Always re-sync the current browser subscription to the server before testing,
-            // in case the DB row was deleted (e.g., user re-created, CASCADE delete).
-            const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-            const sub = reg ? await reg.pushManager.getSubscription() : null;
-            let syncMsg = "no local sub";
-            if (sub) {
-              const r = await fetch("/api/push/subscribe", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  subscription: sub.toJSON(),
-                  userAgent: navigator.userAgent,
-                }),
-              });
-              syncMsg = r.ok ? "sync ok" : `sync ${r.status}`;
-            }
             const res = await fetch("/api/push/test", { method: "POST" });
             const data = await res.json();
-            alert(`[${syncMsg}]\n` + JSON.stringify(data, null, 2));
+            alert(JSON.stringify(data, null, 2));
           }}
           disabled={busy}
           className="text-xs bg-[var(--card)] border border-[var(--card-border)] text-white py-1.5 px-2 rounded-lg hover:border-[var(--accent)]"
