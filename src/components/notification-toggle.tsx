@@ -106,13 +106,28 @@ export function NotificationToggle() {
 
   if (state === "on") {
     return (
-      <button
-        onClick={disable}
-        disabled={busy}
-        className="text-xs text-[var(--muted)] hover:text-[var(--accent)] underline"
-      >
-        🔔 通知ON（クリックで停止）
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={async () => {
+            const res = await fetch("/api/push/test", { method: "POST" });
+            const data = await res.json();
+            alert(
+              `送信結果:\nenv.hasPublic=${data.env?.hasPublic}\nenv.hasPrivate=${data.env?.hasPrivate}\n購読数=${data.subscriptionCount}`,
+            );
+          }}
+          disabled={busy}
+          className="text-xs bg-[var(--card)] border border-[var(--card-border)] text-white py-1.5 px-2 rounded-lg hover:border-[var(--accent)]"
+        >
+          テスト
+        </button>
+        <button
+          onClick={disable}
+          disabled={busy}
+          className="text-xs text-[var(--muted)] hover:text-[var(--accent)] underline"
+        >
+          🔔 通知ON
+        </button>
+      </div>
     );
   }
 
