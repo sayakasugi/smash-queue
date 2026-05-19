@@ -69,7 +69,6 @@ export async function POST() {
   }
 
   return NextResponse.json({
-    session: { id: session.id, name: session.name },
     env: { hasPublic, hasPrivate, publicKeyPrefix: PUBLIC?.slice(0, 16) },
     subscriptionCount: subs?.length ?? 0,
     results,
