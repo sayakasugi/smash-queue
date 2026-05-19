@@ -332,10 +332,18 @@ export default function TournamentPage() {
               setups.map((setup) => {
                 const currentMatchId = (setup as Record<string, unknown>).current_match_id as string | null
                 return (
-                <button
+                <div
                   key={setup.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => bulkMode ? toggleSelectSetup(setup.id) : setSelectedSetup(setup.id)}
-                  className={`w-full text-left p-4 rounded-xl border transition-colors ${
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      bulkMode ? toggleSelectSetup(setup.id) : setSelectedSetup(setup.id)
+                    }
+                  }}
+                  className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${
                     bulkMode && selectedSetupIds.has(setup.id)
                       ? "bg-[var(--accent)]/20 border-[var(--accent)]"
                       : selectedSetup === setup.id && !bulkMode
@@ -385,7 +393,7 @@ export default function TournamentPage() {
                       </button>
                     </div>
                   )}
-                </button>
+                </div>
                 )
               })
             )}
