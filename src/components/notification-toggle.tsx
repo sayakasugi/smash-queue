@@ -57,7 +57,7 @@ export function NotificationToggle() {
         applicationServerKey: urlBase64ToArrayBuffer(publicKey),
       });
 
-      await fetch("/api/push/subscribe", {
+      const saveRes = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -65,10 +65,19 @@ export function NotificationToggle() {
           userAgent: navigator.userAgent,
         }),
       });
+      if (!saveRes.ok) {
+        const body = await saveRes.json().catch(() => ({}));
+        alert(
+          `購読の保存に失敗 (HTTP ${saveRes.status}): ${body.error ?? "不明"}`,
+        );
+        await sub.unsubscribe();
+        setState("off");
+        return;
+      }
       setState("on");
     } catch (err) {
       console.error("enable push error:", err);
-      alert("通知の有効化に失敗しました");
+      alert(`通知の有効化に失敗しました: ${String(err)}`);
     } finally {
       setBusy(false);
     }
