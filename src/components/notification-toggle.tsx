@@ -111,9 +111,7 @@ export function NotificationToggle() {
           onClick={async () => {
             const res = await fetch("/api/push/test", { method: "POST" });
             const data = await res.json();
-            alert(
-              `送信結果:\nenv.hasPublic=${data.env?.hasPublic}\nenv.hasPrivate=${data.env?.hasPrivate}\n購読数=${data.subscriptionCount}`,
-            );
+            alert(JSON.stringify(data, null, 2));
           }}
           disabled={busy}
           className="text-xs bg-[var(--card)] border border-[var(--card-border)] text-white py-1.5 px-2 rounded-lg hover:border-[var(--accent)]"
